@@ -1,0 +1,21 @@
+# Shared rules
+
+Loaded in every Claude Code session (imported from `~/.claude/CLAUDE.md`). Keep it short: only things the model cannot know on its own.
+
+- Reply in {{LANGUAGE}}. The user is {{USER_NAME}}.
+- Brain: `{{VAULT}}`. Projects: `{{PROJECTS}}/<name>`, each one summarized in `{{VAULT}}/projects/<name>.md`.
+- Before starting a new project or task, check `{{VAULT}}/INDEX.md`: have we done something similar before?
+- Show evidence before saying "done": a test, command output, or a re-read file.
+- If you are not sure, say so. Do not invent facts that are not in the vault; ask.
+- Hand work that needs many file reads to a subagent (a small model for reading, a stronger one for judgment). Only the summary comes back to the main context.
+- If the same mistake happens twice, write it to `{{VAULT}}/memory/mistakes.md` and suggest turning it into a rule.
+- Passwords, API keys and `.env` contents are never written into any note. `{{VAULT}}/{{PRIVATE_DIR}}/` is never read.
+- Notes in the vault are never deleted; they move to `archive/`. A cancelled decision gets `status: cancelled` and links to the note that replaces it.
+- Ask before anything irreversible (delete, push, deploy, sending data outside).
+
+## Note taking (the agent takes its own notes, without asking)
+- The vault is the long-term memory. Write what you learn during the session: solid facts/patterns → `knowledge/`, tools/servers/subscriptions → `toolbox/`, about {{USER_NAME}} → `memory/profile.md`, decisions/next steps → the project note or `memory/open-items.md`, unsure → `inbox/`.
+- Before writing, search INDEX and grep for an existing note; update it instead of creating a new one. Every new note gets frontmatter and an INDEX line.
+- Value filter: only write what will be useful again later, not session-specific detail.
+- When the same kind of task repeats 2-3 times, suggest turning it into a skill.
+- When `inbox/` fills up (10+ notes) or once a week: sort, merge, move old notes to `archive/`.

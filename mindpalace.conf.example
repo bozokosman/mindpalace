@@ -1,0 +1,29 @@
+# MindPalace settings. install.sh writes this file to ~/.claude/mindpalace/mindpalace.conf.
+# Edit that copy after install; hooks read it on every run.
+
+# Where your notes live (the vault) and where your code projects live.
+VAULT="${MP_VAULT:-$HOME/MindPalace}"
+PROJECTS="$HOME/Projects"
+
+# Extra folders that get the full "brain" memory load (space separated).
+BRAIN_DIRS=""
+
+# Your name (used in rules and summaries) and the language notes are written in.
+USER_NAME="me"
+LANGUAGE="English"
+
+# Folder inside the vault that Claude must never read (guard hook asks before access).
+PRIVATE_DIR="private"
+
+# SessionStart character budgets. Lower them to save context.
+BUDGET_BRAIN=8000     # when working inside the vault
+BUDGET_PROJECT=3000   # when working inside $PROJECTS/<name>
+
+# Session summaries (run in the background with the claude CLI).
+SUMMARY_MODEL="haiku"
+SUMMARY_EFFORT="low"
+SUMMARY_INPUT_CHARS=40000   # last N characters of the conversation sent to the model
+MIN_CONV_CHARS=400          # shorter sessions are not summarized
+
+# Working state (locks, offsets, log).
+STATE="${MP_STATE:-$HOME/.claude/mindpalace/state}"
