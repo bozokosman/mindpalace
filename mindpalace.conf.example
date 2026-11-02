@@ -1,4 +1,4 @@
-# MindPalace settings. install.sh writes this file to ~/.claude/mindpalace/mindpalace.conf.
+# MindPalace settings. install.sh writes this file to ~/.mindpalace/mindpalace.conf.
 # Edit that copy after install; hooks read it on every run.
 
 # Where your notes live (the vault) and where your code projects live.
@@ -19,11 +19,19 @@ PRIVATE_DIR="private"
 BUDGET_BRAIN=8000     # when working inside the vault
 BUDGET_PROJECT=3000   # when working inside $PROJECTS/<name>
 
-# Session summaries (run in the background with the claude CLI).
-SUMMARY_MODEL="haiku"
-SUMMARY_EFFORT="low"
+# AI tools MindPalace is connected to (claude, codex, gemini). Change with: install.sh --agents ...
+AGENTS="claude"
+# Which tool's CLI writes the session summaries (any connected tool can summarize any other's sessions).
+SUMMARY_AGENT="claude"
+# Small, cheap models for summaries, per tool. Empty = the tool's default.
+CLAUDE_SUMMARY_MODEL="haiku"
+CLAUDE_SUMMARY_EFFORT="low"
+CODEX_SUMMARY_MODEL=""
+GEMINI_SUMMARY_MODEL="flash-lite"
+
+# Session summaries run in the background.
 SUMMARY_INPUT_CHARS=40000   # last N characters of the conversation sent to the model
 MIN_CONV_CHARS=400          # shorter sessions are not summarized
 
 # Working state (locks, offsets, log).
-STATE="${MP_STATE:-$HOME/.claude/mindpalace/state}"
+STATE="${MP_STATE:-$HOME/.mindpalace/state}"

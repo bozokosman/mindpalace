@@ -1,6 +1,6 @@
 # Shared rules
 
-Loaded in every Claude Code session (imported from `~/.claude/CLAUDE.md`). Keep it short: only things the model cannot know on its own.
+Loaded in every session of every connected AI tool (Claude Code, Codex, Gemini CLI, …). Keep it short: only things the model cannot know on its own.
 
 - Reply in {{LANGUAGE}}. The user is {{USER_NAME}}.
 - Brain: `{{VAULT}}`. Projects: `{{PROJECTS}}/<name>`, each one summarized in `{{VAULT}}/projects/<name>.md`.
@@ -19,3 +19,9 @@ Loaded in every Claude Code session (imported from `~/.claude/CLAUDE.md`). Keep 
 - Value filter: only write what will be useful again later, not session-specific detail.
 - When the same kind of task repeats 2-3 times, suggest turning it into a skill.
 - When `inbox/` fills up (10+ notes) or once a week: sort, merge, move old notes to `archive/`.
+
+## If your tool has no MindPalace hooks
+Some tools load these rules but cannot run hooks. Then do the hooks' job yourself:
+- At the start of a session inside `{{VAULT}}`: read `memory/profile.md`, `memory/last-session.md`, `memory/open-items.md` and `INDEX.md`. Inside `{{PROJECTS}}/<name>`: read `{{VAULT}}/projects/<name>.md`.
+- Before the session ends (when the user says goodbye or the task is done): append a short entry to `{{VAULT}}/journal/YYYY-MM-DD.md` (`### HH:MM · [project] title`, then done / decisions / next step) and overwrite `memory/last-session.md` with it.
+- Ask before running `rm -r`, `git push --force`, `git reset --hard`, or anything touching `.env` or `{{PRIVATE_DIR}}/`.

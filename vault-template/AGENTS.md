@@ -11,7 +11,7 @@
 - `inbox/`: raw notes and hook-written note candidates. Sort them into the right place, then remove from inbox.
 - `journal/`: session summaries and `time.csv` (written by hooks)
 - `archive/`: outdated or cancelled notes
-- `{{PRIVATE_DIR}}/`: Claude does not read this
+- `{{PRIVATE_DIR}}/`: AI assistants never read this
 
 ## Note format
 ```yaml

@@ -7,7 +7,7 @@ date: {{DATE}}
 ---
 # Profile
 
-_Empty template. Claude fills this in during the first sessions._
+_Empty template. Your AI assistant fills this in during the first sessions._
 
 ## Basics
 
