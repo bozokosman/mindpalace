@@ -1,9 +1,10 @@
 # MindPalace installer for Windows (PowerShell).
-# Finds Git Bash (Claude Code on Windows already requires Git for Windows) and runs install.sh with the same arguments.
+# Finds Git Bash (Git for Windows) and runs install.sh with the same arguments.
 #   powershell -ExecutionPolicy Bypass -File install.ps1 --yes --vault ~/MindPalace --name "Ada" --lang English
 $ErrorActionPreference = "Stop"
 
 $candidates = @()
+if ($env:MINDPALACE_BASH) { $candidates += $env:MINDPALACE_BASH }
 if ($env:CLAUDE_CODE_GIT_BASH_PATH) { $candidates += $env:CLAUDE_CODE_GIT_BASH_PATH }
 $candidates += @(
   "$env:ProgramFiles\Git\bin\bash.exe",
