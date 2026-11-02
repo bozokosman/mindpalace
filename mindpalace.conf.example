@@ -1,9 +1,12 @@
 # MindPalace settings. install.sh writes this file to ~/.mindpalace/mindpalace.conf.
 # Edit that copy after install; hooks read it on every run.
 
-# Where your notes live (the vault) and where your code projects live.
-VAULT="${MP_VAULT:-$HOME/MindPalace}"
-PROJECTS="$HOME/Projects"
+# Vaults: install.sh writes this section at the top of the file. You name them; as many as you like.
+#   VAULTS="personal work"            names (letters, digits, - or _)
+#   DEFAULT_VAULT="personal"          used when you work outside every vault and projects folder
+#   VAULT_personal="$HOME/Personal"   folder of each vault
+#   PROJECTS_personal="$HOME/Projects"   its code folder (each subfolder is a project; may be empty)
+# A session inside a vault, or inside one of its projects, uses that vault's memory and journal.
 
 # Extra folders that get the full "brain" memory load (space separated).
 BRAIN_DIRS=""
@@ -12,7 +15,7 @@ BRAIN_DIRS=""
 USER_NAME="me"
 LANGUAGE="English"
 
-# Folder inside the vault that Claude must never read (guard hook asks before access).
+# Folder inside every vault that AI assistants must never read (the guard checks it).
 PRIVATE_DIR="private"
 
 # SessionStart character budgets. Lower them to save context.

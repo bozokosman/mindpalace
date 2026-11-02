@@ -31,7 +31,7 @@ mp_hook_path() {
 # mp_rules_block <file> <body>: add or replace the managed block (backup first).
 mp_rules_block() {
   local f="$1" block
-  block=$(printf '%s\n# MindPalace (managed by install.sh; edit RULES.md in your vault instead)\n%s\n%s' "$MARK_START" "$2" "$MARK_END")
+  block=$(printf '%s\n# MindPalace (managed by install.sh; edit RULES.md in your vault instead)\n%s\n%s' "$MARK_START" "$(printf '%s' "$2")" "$MARK_END")
   mkdir -p "$(dirname "$f")"
   if [ -f "$f" ]; then
     cp "$f" "$f.bak-mindpalace-$STAMP"
@@ -74,11 +74,33 @@ mp_rules_only() {
   adapter_url()   { echo "$_RO_URL"; }
   adapter_plan()  { echo "  - [$_RO_LABEL] managed block in $_RO_FILE telling it to read \$VAULT/RULES.md (backup first; no hooks: memory works through the rules)"; }
   adapter_install() {
-    mp_rules_block "$_RO_FILE" "At the start of every session, read $VAULT/RULES.md and follow it, including its section \"If your tool has no MindPalace hooks\". Vault: $VAULT" \
+    mp_rules_block "$_RO_FILE" "At the start of every session, read $VAULT/RULES.md and follow it, including its section \"If your tool has no MindPalace hooks\". Vault: $VAULT
+$(mp_rules_extra)" \
       && ok "$_RO_LABEL: rules block added to $_RO_FILE"
   }
   adapter_uninstall() { mp_rules_unblock "$_RO_FILE" && ok "$_RO_LABEL: rules block removed from $_RO_FILE"; return 0; }
   adapter_doctor() {
     grep -qF "$MARK_START" "$_RO_FILE" 2>/dev/null && ok "$_RO_LABEL: rules block in $_RO_FILE" || bad "$_RO_LABEL: rules block missing in $_RO_FILE (run install.sh)"
   }
+}
+
+# Vault helpers for adapters. install.sh exports:
+#   VAULT          default vault folder
+#   MP_VAULT_LIST  one "name|folder|projects" line per vault (default first)
+# mp_rules_extra: a line listing all vaults, appended to every rules block (empty with one vault).
+mp_rules_extra() {
+  local n v p out=""
+  [ "$(printf '%s\n' "$MP_VAULT_LIST" | grep -c .)" -gt 1 ] || return 0
+  while IFS='|' read -r n v p; do
+    [ -n "$n" ] && out="$out; $n = $v${p:+ (projects: $p)}"
+  done <<<"$MP_VAULT_LIST"
+  printf 'MindPalace vaults (first is the default)%s. Each has its own RULES.md and notes; write to the vault that owns the current folder.' "${out#;}" | sed 's/default) /default): /'
+}
+# mp_each_vault_file <file name> <content>: create the file in every vault if it is missing.
+mp_each_vault_file() {
+  local n v p
+  while IFS='|' read -r n v p; do
+    [ -n "$v" ] && [ -d "$v" ] && [ ! -f "$v/$1" ] && printf '%s\n' "$2" > "$v/$1" && ok "$1 created in vault $n (points to AGENTS.md)"
+  done <<<"$MP_VAULT_LIST"
+  return 0
 }

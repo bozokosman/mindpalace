@@ -19,8 +19,11 @@ mp_guard_reason() {
   check 'git[[:space:]].*(checkout[[:space:]]+--[[:space:]]|restore[[:space:]]+\.)' "Uncommitted changes are discarded."
   # Sensitive files: .env and the vault's private folder
   check '(^|[^a-zA-Z0-9_])\.env([^a-zA-Z0-9_]|$)'                ".env file access (may contain passwords or API keys)."
-  vname=$(basename "$VAULT")
-  check "($vname|\\\$VAULT)[/\\\\]$PRIVATE_DIR([/\\\\]|[[:space:]]|$)" "The vault's $PRIVATE_DIR/ folder is off limits."
+  local n
+  for n in $VAULTS; do
+    mp_vault_select "$n"; vname=$(basename "$VAULT")
+    check "($vname|\\\$VAULT)[/\\\\]$PRIVATE_DIR([/\\\\]|[[:space:]]|$)" "The $PRIVATE_DIR/ folder of vault \"$n\" is off limits."
+  done
 
   printf '%s' "$reason"
 }

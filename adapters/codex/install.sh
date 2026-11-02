@@ -35,7 +35,8 @@ adapter_install() {
   ok "Codex: hooks registered in $A_CODEX_HOOKS (backup made)"
   warn "Codex: open Codex and approve the MindPalace hooks once with /hooks, otherwise they do not run"
   if [ "$RULES" = 1 ]; then
-    mp_rules_block "$A_CODEX_RULES" "Shared rules and memory system: read $VAULT/RULES.md and follow it. Vault: $VAULT" \
+    mp_rules_block "$A_CODEX_RULES" "Shared rules and memory system: read $VAULT/RULES.md and follow it. Vault: $VAULT
+$(mp_rules_extra)" \
       && ok "Codex: rules pointer added to $A_CODEX_RULES"
   fi
   return 0

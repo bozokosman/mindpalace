@@ -1,8 +1,8 @@
 #!/bin/bash
 # Agent-agnostic memory text for session start. Usage (after sourcing common.sh):
 #   mp_memory "$cwd"    # prints memory for this location (nothing outside vault/projects)
-#  - inside the vault (or BRAIN_DIRS): profile, last session, open items, INDEX, recent journal
-#  - inside $PROJECTS/<name>: that project's note + its recent journal entries
+#  - inside a vault (or BRAIN_DIRS): that vault's profile, last session, open items, INDEX, recent journal
+#  - inside <projects>/<name> of a vault: that project's note + its recent journal entries, from that vault
 
 mp_body() { [ -f "$1" ] && awk 'NR==1&&/^---$/{f=1;next} f&&/^---$/{f=0;next} !f' "$1"; }  # strip frontmatter
 
@@ -25,17 +25,16 @@ mp_recent_journal() {  # $1: project filter (empty = all), $2: chars
 }
 
 mp_memory() {
-  local cwd="$1" mode="" project="" d n
-  case "$cwd/" in
-    "$VAULT"/*) mode=brain ;;
-    "$PROJECTS"/*/*) mode=project; project=$(mp_label "$cwd") ;;
-  esac
-  for d in $BRAIN_DIRS; do case "$cwd/" in "$d"/*) mode=brain ;; esac; done
+  local cwd="$1" mode project n others=""
+  mp_resolve "$cwd"; mode="$MP_MODE"
+  [ "$mode" = project ] && project=$(mp_label "$cwd")
+  for n in $VAULTS; do [ "$n" != "$VAULT_NAME" ] && others="$others $n"; done
 
   case "$mode" in
     brain)
       {
-        echo "# MindPalace memory (loaded at session start)"
+        echo "# MindPalace memory: vault \"$VAULT_NAME\" ($VAULT), loaded at session start"
+        [ -n "$others" ] && echo "Other vaults:$others (see the global rules for their folders)."
         echo; mp_clip "$VAULT/memory/profile.md" 1500
         echo; mp_clip "$VAULT/memory/last-session.md" 1500
         echo; mp_clip "$VAULT/memory/open-items.md" 1000
@@ -47,7 +46,7 @@ mp_memory() {
       ;;
     project)
       {
-        echo "# Project memory: $project (loaded at session start)"
+        echo "# Project memory: $project (vault \"$VAULT_NAME\", loaded at session start)"
         if [ -f "$VAULT/projects/$project.md" ]; then
           echo; mp_body "$VAULT/projects/$project.md" | head -c 2000
         else

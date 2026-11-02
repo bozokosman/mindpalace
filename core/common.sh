@@ -28,13 +28,37 @@ mp_path() {
 # shellcheck source=/dev/null
 source "$MP_HOME/mindpalace.conf" || exit 0
 
-# Project label for a working directory: "vault", the project folder name, or the basename.
+# Vaults. The config lists names in VAULTS and, per name, VAULT_<name> (folder) and
+# PROJECTS_<name> (code folder, may be empty). "-" in a name becomes "_" in the variable.
+mp_vkey() { printf '%s' "$1" | tr '-' '_'; }
+mp_vault_select() {  # sets VAULT_NAME, VAULT, PROJECTS
+  local k; k=$(mp_vkey "$1")
+  VAULT_NAME="$1"; eval "VAULT=\${VAULT_$k:-}"; eval "PROJECTS=\${PROJECTS_$k:-}"
+}
+if [ -z "${VAULTS:-}" ] && [ -n "${VAULT:-}" ]; then   # single-vault config (v1.0/1.1)
+  VAULTS=main; DEFAULT_VAULT=main; VAULT_main="$VAULT"; PROJECTS_main="${PROJECTS:-}"
+fi
+DEFAULT_VAULT="${DEFAULT_VAULT:-${VAULTS%% *}}"
+mp_vault_select "$DEFAULT_VAULT"
+
+# Pick the vault for a working directory. Sets MP_MODE: brain (inside a vault or BRAIN_DIRS),
+# project (inside <projects>/<name> of some vault) or empty (elsewhere: default vault selected).
+mp_resolve() {
+  local c="$1/" n d
+  MP_MODE=""
+  for n in $VAULTS; do mp_vault_select "$n"; [ -n "$VAULT" ] && case "$c" in "$VAULT"/*) MP_MODE=brain; return ;; esac; done
+  for n in $VAULTS; do mp_vault_select "$n"; [ -n "$PROJECTS" ] && case "$c" in "$PROJECTS"/*/*) MP_MODE=project; return ;; esac; done
+  mp_vault_select "$DEFAULT_VAULT"
+  for d in $BRAIN_DIRS; do case "$c" in "$d"/*) MP_MODE=brain ;; esac; done
+}
+
+# Project label for a working directory (after mp_resolve): "vault", the project folder name, or the basename.
 mp_label() {
   local c="$1" p
-  case "$c/" in
-    "$VAULT"/*) echo vault; return ;;
-    "$PROJECTS"/*/*) p=${c#"$PROJECTS"/}; echo "${p%%/*}"; return ;;
-  esac
+  case "$c/" in "$VAULT"/*) echo vault; return ;; esac
+  if [ -n "$PROJECTS" ]; then
+    case "$c/" in "$PROJECTS"/*/*) p=${c#"$PROJECTS"/}; echo "${p%%/*}"; return ;; esac
+  fi
   basename "$c"
 }
 
@@ -66,8 +90,9 @@ mp_adapter() {
 }
 
 # Start a background summary: mp_summarize_bg <agent> <cwd> <transcript> <session_id> <end|compact>
+# The summary goes to the vault that owns <cwd> (default vault otherwise).
 mp_summarize_bg() {
-  mp_detach bash "$MP_HOME/core/summarize.sh" "$1" "$(mp_label "$2")" "$3" "$4" "${5:-end}"
+  mp_detach bash "$MP_HOME/core/summarize.sh" "$1" "$2" "$3" "$4" "${5:-end}"
 }
 
 # Safety net: summarize this agent's recent sessions that never got a session-end

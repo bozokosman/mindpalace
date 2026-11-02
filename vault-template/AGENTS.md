@@ -1,6 +1,6 @@
-# MindPalace
+# {{VAULT_NAME}}
 
-{{USER_NAME}}'s second brain: plain markdown, the whole of life. No code is written here; code lives in `{{PROJECTS}}`.
+A vault of {{USER_NAME}}'s second brain (MindPalace): plain markdown. No code is written here; code lives in `{{PROJECTS}}`.
 
 ## Map
 - `INDEX.md`: one line per note. Look here first when searching.

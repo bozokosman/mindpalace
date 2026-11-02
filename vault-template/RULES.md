@@ -3,7 +3,8 @@
 Loaded in every session of every connected AI tool (Claude Code, Codex, Gemini CLI, …). Keep it short: only things the model cannot know on its own.
 
 - Reply in {{LANGUAGE}}. The user is {{USER_NAME}}.
-- Brain: `{{VAULT}}`. Projects: `{{PROJECTS}}/<name>`, each one summarized in `{{VAULT}}/projects/<name>.md`.
+- This vault: `{{VAULT_NAME}}` at `{{VAULT}}`. Its projects: `{{PROJECTS}}/<name>`, each one summarized in `{{VAULT}}/projects/<name>.md`.
+- If {{USER_NAME}} has several vaults (listed in the global rules), keep them separate: notes go to the vault that owns the current folder.
 - Before starting a new project or task, check `{{VAULT}}/INDEX.md`: have we done something similar before?
 - Show evidence before saying "done": a test, command output, or a re-read file.
 - If you are not sure, say so. Do not invent facts that are not in the vault; ask.

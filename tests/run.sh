@@ -32,10 +32,13 @@ H="$T/.mindpalace"; V="$T/brain"
 
 echo "install"
 t "--check finds all 3 tools"  "bash '$ROOT/install.sh' --check | grep -q 'found: claude codex gemini'"
-t "--plan changes nothing"     "bash '$ROOT/install.sh' --plan --vault '$V' --agents claude,codex,gemini && [ ! -e '$H' ] && [ ! -e '$V' ]"
-t "unknown agent rejected"     "! bash '$ROOT/install.sh' --yes --vault '$V' --agents foo"
-t "install succeeds"           "bash '$ROOT/install.sh' --yes --vault '$V' --projects '$T/code' --name 'A/B & C' --lang English --agents claude,codex,gemini"
+t "--plan changes nothing"     "bash '$ROOT/install.sh' --plan --vault brain='$V' --agents claude,codex,gemini && [ ! -e '$H' ] && [ ! -e '$V' ]"
+t "unknown agent rejected"     "! bash '$ROOT/install.sh' --yes --vault brain='$V' --agents foo"
+t "invalid vault name rejected" "! bash '$ROOT/install.sh' --plan --vault '9bad=$T/x' --agents claude"
+t "install succeeds"           "bash '$ROOT/install.sh' --yes --vault brain='$V' --projects brain='$T/code' --name 'A/B & C' --lang English --agents claude,codex,gemini"
 t "doctor healthy"             "bash '$H/doctor.sh'"
+t "vault named by the user"    "head -1 '$V/AGENTS.md' | grep -qx '# brain'"
+t "config has vault section"   "grep -qx 'VAULTS=\"brain\"' '$H/mindpalace.conf' && grep -q '^VAULT_brain=' '$H/mindpalace.conf'"
 t "no placeholders left"       "! grep -rq '{{' '$V'"
 t "name with / and & kept"     "grep -q 'The user is A/B & C' '$V/RULES.md'"
 t "vault CLAUDE.md → AGENTS"   "grep -qx '@AGENTS.md' '$V/CLAUDE.md'"
@@ -89,14 +92,14 @@ sed -i.bak "s|^MIN_CONV_CHARS=.*|MIN_CONV_CHARS=50|" "$H/mindpalace.conf"
 for a in claude codex gemini; do
   f="$FX/$a.jsonl"; [ "$a" = gemini ] && f="$FX/gemini.json"
   sed -i.bak "s|^SUMMARY_AGENT=.*|SUMMARY_AGENT=\"$a\"|" "$H/mindpalace.conf"
-  MP_HOME="$H" bash "$H/core/summarize.sh" "$a" app "$f" "s-$a" end >/dev/null 2>&1
+  MP_HOME="$H" bash "$H/core/summarize.sh" "$a" "$T/code/app" "$f" "s-$a" end >/dev/null 2>&1
   t "$a: journal entry"        "grep -q 'Stripe checkout ($a)' '$V/journal/'\$(date +%F).md"
   t "$a: time.csv row"         "grep -qE ',app,[45],3,s-$a,.*,$a\$' '$V/journal/time.csv'"
   t "$a: inbox candidate"      "grep -q 'prices in integer cents' '$V/inbox/candidates-'\$(date +%F).md"
 done
-MP_HOME="$H" bash "$H/core/summarize.sh" claude app "$FX/claude.jsonl" s-claude end >/dev/null 2>&1
+MP_HOME="$H" bash "$H/core/summarize.sh" claude "$T/code/app" "$FX/claude.jsonl" s-claude end >/dev/null 2>&1
 t "re-run: nothing new, one csv row" "[ \$(grep -c 's-claude' '$V/journal/time.csv') = 1 ]"
-MP_HOME="$H" bash "$H/core/summarize.sh" codex xproj "$FX/codex.jsonl" s-cross end >/dev/null 2>&1   # SUMMARY_AGENT is gemini now
+MP_HOME="$H" bash "$H/core/summarize.sh" codex "$T/code/xproj" "$FX/codex.jsonl" s-cross end >/dev/null 2>&1   # SUMMARY_AGENT is gemini now
 t "cross-tool: codex session summarized by gemini" "grep -qF '[xproj] Stripe checkout (gemini) (codex)' '$V/journal/'\$(date +%F).md"
 
 echo "rules-only tools (zed, qwen)"
@@ -107,6 +110,22 @@ t "qwen: block appended, notes kept" "grep -q mindpalace:start '$T/.qwen/QWEN.md
 t "doctor healthy with 5 tools" "bash '$H/doctor.sh'"
 t "summarizer still a full adapter" "grep -qE '^SUMMARY_AGENT=\"(claude|codex|gemini)\"' '$H/mindpalace.conf'"
 t "plan lists rules-only tools" "bash '$ROOT/install.sh' --plan --agents zed | grep -q 'Zed agent.*RULES.md'"
+
+echo "multiple vaults"
+bash "$ROOT/install.sh" --yes --vault work="$T/WorkBrain" --projects work="$T/work-code" >/dev/null 2>&1
+W="$T/WorkBrain"; mkdir -p "$T/work-code/api/src"
+t "second vault added, first kept" "grep -qx 'VAULTS=\"brain work\"' '$H/mindpalace.conf' && grep -qx 'DEFAULT_VAULT=\"brain\"' '$H/mindpalace.conf' && [ -f '$V/journal/time.csv' ]"
+t "new vault created + named"  "head -1 '$W/AGENTS.md' | grep -qx '# work' && grep -q 'This vault: .work. at' '$W/RULES.md'"
+t "pointer files in new vault" "grep -qx '@AGENTS.md' '$W/CLAUDE.md' && grep -qx '@./AGENTS.md' '$W/GEMINI.md'"
+t "rules block lists vaults"   "grep -q 'work = $W (projects: $T/work-code)' '$T/.claude/CLAUDE.md' && [ \$(grep -c mindpalace:start '$T/.claude/CLAUDE.md') = 1 ]"
+t "memory: work vault"         "echo '{\"cwd\":\"$W\"}' | MINDPALACE_DOCTOR=1 bash '$H/adapters/claude/hooks/session-start.sh' | grep -q 'vault \"work\"'"
+t "memory: work project"       "echo '{\"cwd\":\"$T/work-code/api/src\"}' | MINDPALACE_DOCTOR=1 bash '$H/adapters/claude/hooks/session-start.sh' | grep -q 'Project memory: api (vault \"work\"'"
+t "memory: brain still brain"  "echo '{\"cwd\":\"$V\"}' | MINDPALACE_DOCTOR=1 bash '$H/adapters/claude/hooks/session-start.sh' | grep -q 'vault \"brain\"'"
+MP_HOME="$H" bash "$H/core/summarize.sh" claude "$T/work-code/api" "$FX/claude.jsonl" s-work end >/dev/null 2>&1
+t "work session → work journal" "grep -q '\[api\]' '$W/journal/'\$(date +%F).md && ! grep -q 's-work' '$V/journal/time.csv'"
+t "guard: private of 2nd vault" "jq -n --arg c 'cat $W/private/x' '{tool_input:{command:\$c}}' | bash '$H/adapters/claude/hooks/guard.sh' | jq -e '.hookSpecificOutput.permissionDecisionReason | test(\"vault .work.\")'"
+t "doctor: both vaults"        "bash '$H/doctor.sh' | grep -q \"vault 'work'\""
+t "--default switches default" "bash '$ROOT/install.sh' --yes --default work >/dev/null 2>&1 && grep -qx 'DEFAULT_VAULT=\"work\"' '$H/mindpalace.conf'"
 
 echo "uninstall"
 bash "$H/uninstall.sh" --yes >/dev/null

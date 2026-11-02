@@ -12,7 +12,7 @@ AI assistants forget everything when a session ends. MindPalace gives them a lon
 - **It stops before it breaks things.** A guard checks every shell command for `rm -r`, `git push --force`, `git reset --hard`, `.env` access and your private folder.
 - **Your tools share one brain.** A session in Codex shows up in tomorrow's Claude session, and the other way round.
 
-Everything is plain text you can open in any editor or in [Obsidian](https://obsidian.md). No database, no cloud sync, no extra API key.
+Everything is plain text you can open in any editor or in [Obsidian](https://obsidian.md). You name your vaults and decide how many you need, for example one for personal life and one for work. No database, no cloud sync, no extra API key.
 
 ---
 
@@ -26,7 +26,7 @@ Open your AI assistant in the folder where you downloaded MindPalace and say:
 
 The assistant then works through these steps:
 1. Checks your system and finds which AI tools you have.
-2. Asks you a few short questions: where your notes and code live, your name, your language, and which tools to connect.
+2. Asks you a few short questions: what your vaults are called and where they live, where your code lives, your name, your language, and which tools to connect.
 3. Shows you the plan and installs only after you say yes.
 
 It never installs system packages without asking you first, and it backs up every config file before touching it.
@@ -48,7 +48,10 @@ The installer asks the same questions. Useful flags:
 | `--plan` | Show what would happen, change nothing |
 | `--yes` | No questions; use the flags below or defaults |
 | `--agents claude,codex,…` | Which tools to connect (default: every supported tool found) |
-| `--vault DIR` `--projects DIR` `--name NAME` `--lang LANGUAGE` | Answers in advance |
+| `--vault NAME=DIR` | A vault, named by you. Repeat for several; on a later run it adds a vault |
+| `--projects NAME=DIR` | That vault's code folder (each subfolder is a project) |
+| `--default NAME` | Vault used when you work outside every vault and projects folder (default: the first) |
+| `--name NAME` `--lang LANGUAGE` | Answers in advance |
 | `--no-rules` | Don't add the rules block to the tools' global instruction files |
 | `--no-git` | Don't create a local git repo in the vault |
 
@@ -58,7 +61,7 @@ Restart your AI tool(s) afterwards, then check:
 bash ~/.mindpalace/doctor.sh      # should end with "Healthy."
 ```
 
-Added a new AI tool later? Run the installer again with `--agents`. Your vault and settings are kept.
+Added a new AI tool later? Run the installer again with `--agents`. Need another vault? Run it with `--vault NAME=DIR`. Existing vaults and settings are kept.
 
 ---
 
@@ -114,8 +117,8 @@ Your tool isn't listed? If it reads a global instructions file, a rules-only ada
             what to load, by location                            any connected tool's CLI, small model
                   │                                                       │
    ┌──────────────▼───────────── your vault (plain markdown) ─────────────▼──────┐
-   │ INDEX.md  RULES.md  AGENTS.md  memory/  projects/  knowledge/  toolbox/      │
-   │ inbox/  journal/  archive/  private/                                        │
+   │ one or more vaults, named by you: INDEX.md  RULES.md  AGENTS.md  memory/     │
+   │ projects/  knowledge/  toolbox/  inbox/  journal/  archive/  private/        │
    └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -124,10 +127,23 @@ Your tool isn't listed? If it reads a global instructions file, a rules-only ada
 - **The summarizer is shared.** Any connected tool can summarize any other tool's sessions (set `SUMMARY_AGENT`). Secrets are scrubbed before and after the model call.
 - **Session start is size-capped**, and says when it truncates something.
 
-### Your vault
+### Your vaults
+
+You name your vaults and decide how many you want, for example one called `personal` and one called `work`, each with its own code folder:
+
+```bash
+bash install.sh --vault personal=~/Personal --projects personal=~/Projects \
+                --vault work=~/Work --projects work=~/work-code
+```
+
+- A session started **inside a vault**, or inside **one of its projects**, loads that vault's memory and writes its journal there.
+- Anywhere else, the **default vault** is used (the first one, or `--default NAME`).
+- Vaults stay separate. Every vault has its own rules, notes and journal, and the global rules tell the assistant which vaults exist.
+
+Each vault looks like this:
 
 ```
-MindPalace/
+<your vault>/
 ├── AGENTS.md       how assistants behave inside the vault (CLAUDE.md / GEMINI.md point here)
 ├── RULES.md        shared rules, loaded in every session of every connected tool
 ├── INDEX.md        one line per note, so the assistant can find things
@@ -151,8 +167,8 @@ Everything lives in `~/.mindpalace/mindpalace.conf`:
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `VAULT` | `~/MindPalace` | Your notes |
-| `PROJECTS` | `~/Projects` | Your code; each subfolder is a project |
+| `VAULTS`, `DEFAULT_VAULT` | your choice | Vault names, and the one used outside all vaults and projects |
+| `VAULT_<name>`, `PROJECTS_<name>` | your choice | Folder and code folder of each vault (written by the installer) |
 | `AGENTS` | detected | Connected tools |
 | `SUMMARY_AGENT` | first full tool found | Whose CLI writes the summaries |
 | `CLAUDE_SUMMARY_MODEL`, `CODEX_SUMMARY_MODEL`, `GEMINI_SUMMARY_MODEL` | `haiku`, tool default, `flash-lite` | Small models for summaries |
@@ -174,7 +190,7 @@ Everything lives in `~/.mindpalace/mindpalace.conf`:
 - **Uninstall:** `bash ~/.mindpalace/uninstall.sh`.
   - It disconnects every tool: hooks and rules blocks are removed, and each config file is backed up first.
   - It moves `~/.mindpalace` aside instead of deleting it.
-  - **Your vault is never touched.**
+  - **Your vaults are never touched.**
 
 ## Roadmap
 

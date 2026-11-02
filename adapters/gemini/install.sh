@@ -11,7 +11,7 @@ adapter_url()   { echo "https://github.com/google-gemini/gemini-cli"; }
 adapter_plan() {
   echo "  - [Gemini] back up $A_GEMINI_SETTINGS, register hooks: BeforeTool/shell (guard, denies risky commands), SessionStart, SessionEnd, PreCompress"
   [ "$RULES" = 1 ] && echo "  - [Gemini] managed block importing \$VAULT/RULES.md into $A_GEMINI_RULES (backup first)"
-  echo "  - [Gemini] \$VAULT/GEMINI.md → @./AGENTS.md (only if missing)"
+  echo "  - [Gemini] GEMINI.md → @./AGENTS.md in each vault (only if missing)"
 }
 
 _gemini_jq_ours='def ours: (.hooks // []) | any(.command | test("mindpalace[/\\\\]adapters[/\\\\]gemini[/\\\\]hooks"));'
@@ -33,8 +33,9 @@ adapter_install() {
     | put("PreCompress"; {hooks:[{type:"command", name:"mindpalace-summary", command:$c, timeout:10000}]})
   ' "$A_GEMINI_SETTINGS" > "$tmp" && mv "$tmp" "$A_GEMINI_SETTINGS"
   ok "Gemini: hooks registered in $A_GEMINI_SETTINGS (backup made)"
-  [ "$RULES" = 1 ] && mp_rules_block "$A_GEMINI_RULES" "@$VAULT/RULES.md" && ok "Gemini: rules imported in $A_GEMINI_RULES"
-  [ -f "$VAULT/GEMINI.md" ] || { printf '@./AGENTS.md\n' > "$VAULT/GEMINI.md"; ok "Gemini: $VAULT/GEMINI.md → @./AGENTS.md"; }
+  [ "$RULES" = 1 ] && mp_rules_block "$A_GEMINI_RULES" "@$VAULT/RULES.md
+$(mp_rules_extra)" && ok "Gemini: rules imported in $A_GEMINI_RULES"
+  mp_each_vault_file GEMINI.md '@./AGENTS.md'
   return 0
 }
 

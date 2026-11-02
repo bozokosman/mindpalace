@@ -1,6 +1,7 @@
 #!/bin/bash
 # Agent-agnostic summarizer. Runs in the background.
-# Usage: summarize.sh <agent> <project> <transcript> [session_id] [end|compact]
+# Usage: summarize.sh <agent> <cwd> <transcript> [session_id] [end|compact]
+#  - writes into the vault that owns <cwd> (the default vault otherwise)
 #  - <agent>'s adapter turns the transcript into normalized messages
 #    ({"role":"user|assistant","text":"...","ts":"ISO-8601"} per line, main conversation only)
 #  - the SUMMARY_AGENT adapter's CLI writes the summary (any installed agent can summarize any other's sessions)
@@ -8,8 +9,9 @@
 #    puts note candidates into inbox/, adds one row per session to journal/time.csv
 export MINDPALACE_HOOK=1          # recursion lock: hooks of the child CLI call do nothing
 source "$(cd "$(dirname "$0")" && pwd)/common.sh"
-agent="$1"; project="$2"; tr="$3"; sid="${4:-$(basename "$tr" | sed 's/\.[^.]*$//')}"; mode="${5:-end}"
+agent="$1"; cwd="$2"; tr="$3"; sid="${4:-$(basename "$tr" | sed 's/\.[^.]*$//')}"; mode="${5:-end}"
 [ -e "$tr" ] || { echo "no transcript: $tr"; exit 1; }
+mp_resolve "$cwd"; project=$(mp_label "$cwd")
 mkdir -p "$STATE" "$VAULT/journal" "$VAULT/inbox" "$VAULT/memory"
 log() { echo "$(date '+%F %T') [$agent:$sid:$mode] $*"; }
 today=$(date +%F)

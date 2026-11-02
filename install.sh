@@ -5,7 +5,8 @@
 #   ./install.sh --plan [options]    show what would be done, change nothing
 #   ./install.sh --yes [options]     no questions; defaults for anything not given
 # Options: --agents LIST (e.g. claude,codex; default: every supported tool found)
-#          --vault DIR  --projects DIR  --name NAME  --lang LANGUAGE  --no-rules  --no-git
+#          --vault NAME=DIR (repeat for several vaults; adds to existing ones)  --projects NAME=DIR
+#          --default NAME  --name YOUR_NAME  --lang LANGUAGE  --no-rules  --no-git
 # Windows: run from Git Bash, or use install.ps1 (it finds Git Bash for you).
 # Safe to run again: nothing is duplicated, an existing vault or config is never overwritten.
 set -euo pipefail
@@ -18,20 +19,21 @@ VERSION=$(cat "$SRC/VERSION")
 ADIR="$SRC/adapters"
 
 YES=0; RULES=1; usegit=1; checkonly=0; plan=0
-vault=""; projects=""; name=""; lang=""; agents=""
+vault_args=(); projects_args=(); default_cli=""; name=""; lang=""; agents=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --yes|-y) YES=1 ;;
     --check) checkonly=1 ;;
     --plan) plan=1; YES=1 ;;
     --agents) agents="$2"; shift ;;
-    --vault) vault="$2"; shift ;;
-    --projects) projects="$2"; shift ;;
+    --vault) vault_args+=("$2"); shift ;;
+    --projects) projects_args+=("$2"); shift ;;
+    --default) default_cli="$2"; shift ;;
     --name) name="$2"; shift ;;
     --lang) lang="$2"; shift ;;
     --no-rules) RULES=0 ;;
     --no-git) usegit=0 ;;
-    -h|--help) sed -n '2,11p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 2 ;;
   esac
   shift
@@ -87,23 +89,69 @@ fi
 
 # 2. Settings
 say "2/6 Settings"
+valid_name() { [[ "$1" =~ ^[A-Za-z][A-Za-z0-9_-]*$ ]]; }
+vkey() { printf '%s' "$1" | tr '-' '_'; }
+# Vault table: names in $vnames, folders/projects in vf_<key>, vp_<key>
+vnames=""
+vset() {  # vset name folder projects
+  local k; k=$(vkey "$1")
+  case " $vnames " in *" $1 "*) ;; *) vnames="$vnames $1" ;; esac
+  [ -n "$2" ] && eval "vf_$k=\$2"
+  [ -n "${3+x}" ] && eval "vp_$k=\$3"
+  return 0
+}
+vget() { local k; k=$(vkey "$1"); eval "printf '%s' \"\${v$2_$k:-}\""; }
+
 existing_conf=0
 if [ -f "$MP_HOME/mindpalace.conf" ]; then
   existing_conf=1
   ctmp=$(mktemp)
-  ( source "$MP_HOME/mindpalace.conf"; printf '%s\n%s\n%s\n%s\n%s\n' "$VAULT" "$PROJECTS" "$USER_NAME" "$LANGUAGE" "${AGENTS:-}" ) > "$ctmp" 2>/dev/null || true
-  cv=""; cp_=""; cn=""; cl=""; ca=""
-  { read -r cv; read -r cp_; read -r cn; read -r cl; read -r ca; } < "$ctmp" || true
+  ( source "$MP_HOME/mindpalace.conf"
+    if [ -z "${VAULTS:-}" ] && [ -n "${VAULT:-}" ]; then VAULTS=main; DEFAULT_VAULT=main; VAULT_main="$VAULT"; PROJECTS_main="${PROJECTS:-}"; fi
+    printf '%s\n%s\n%s\n%s\n' "$USER_NAME" "$LANGUAGE" "${AGENTS:-}" "${DEFAULT_VAULT:-}"
+    for n in $VAULTS; do k=$(printf '%s' "$n" | tr '-' '_'); eval "printf '%s|%s|%s\n' \"\$n\" \"\${VAULT_$k:-}\" \"\${PROJECTS_$k:-}\""; done
+  ) > "$ctmp" 2>/dev/null || true
+  { read -r cn; read -r cl; read -r ca; read -r cd_; } < "$ctmp" || true
+  name="${name:-$cn}"; lang="${lang:-$cl}"; agents="${agents:-$ca}"; default_vault="${default_vault:-$cd_}"
+  while IFS='|' read -r n v p; do [ -n "$n" ] && vset "$n" "$v" "$p"; done < <(tail -n +5 "$ctmp")
   rm -f "$ctmp"
-  vault="${vault:-$cv}"; projects="${projects:-$cp_}"; name="${name:-$cn}"; lang="${lang:-$cl}"; agents="${agents:-$ca}"
-  ok "Existing config found and kept: $MP_HOME/mindpalace.conf"
+  ok "Existing config found and kept: $MP_HOME/mindpalace.conf (vaults:$vnames)"
 fi
-[ -n "$vault" ]    || ask vault    "Vault folder (your notes)" "~/MindPalace"
-[ -n "$projects" ] || ask projects "Projects folder (your code)" "~/Projects"
+
+# Vaults given on the command line: --vault NAME=PATH (or a bare PATH), --projects NAME=PATH (or a bare PATH for the first one)
+first_cli=""
+for spec in "${vault_args[@]+"${vault_args[@]}"}"; do
+  case "$spec" in *=*) n="${spec%%=*}"; v="${spec#*=}" ;; *) v="$spec"; n=$(basename "$v" | tr -cd 'A-Za-z0-9_-'); n="${n:-brain}" ;; esac
+  valid_name "$n" || { echo "Invalid vault name '$n': use letters, digits, - or _ (start with a letter)." >&2; exit 2; }
+  vset "$n" "$v"; first_cli="${first_cli:-$n}"
+done
+for spec in "${projects_args[@]+"${projects_args[@]}"}"; do
+  case "$spec" in *=*) n="${spec%%=*}"; p="${spec#*=}" ;; *) n="${first_cli:-${default_vault:-$(echo $vnames | cut -d' ' -f1)}}"; p="$spec" ;; esac
+  [ -n "$n" ] || { echo "--projects needs a vault: pass --vault first or use NAME=PATH." >&2; exit 2; }
+  vset "$n" "" "$p"
+done
+
+# Nothing known yet: ask (or use one default vault)
+if [ -z "$vnames" ]; then
+  ask names "Vault names, space separated (e.g. personal work)" "brain"
+  for n in $names; do valid_name "$n" || { echo "Invalid vault name '$n': use letters, digits, - or _ (start with a letter)." >&2; exit 2; }; vset "$n" ""; done
+fi
+first=""
+for n in $vnames; do
+  first="${first:-$n}"
+  [ -n "$(vget "$n" f)" ] || { ask v "Folder for vault '$n'" "~/$n"; vset "$n" "$v"; }
+  if [ -z "$(vget "$n" p)" ] && [ -z "$(k=$(vkey "$n"); eval "printf '%s' \"\${vp_$k+set}\"")" ]; then
+    if [ "$n" = "$first" ]; then d="~/Projects"; else d=""; fi
+    ask p "Projects folder for vault '$n' (empty = none)" "$d"; vset "$n" "" "$p"
+  fi
+done
+default_vault="${default_vault:-$first}"
+[ -n "$default_cli" ] && default_vault="$default_cli"
+case " $vnames " in *" $default_vault "*) ;; *) echo "Default vault '$default_vault' is not in the vault list:$vnames" >&2; exit 2 ;; esac
+
 [ -n "$name" ]     || ask name     "Your name" "$(id -un)"
 [ -n "$lang" ]     || ask lang     "Language for notes and replies" "English"
 [ -n "$agents" ]   || ask agents   "Connect which AI tools (comma separated)" "$(echo $found | tr ' ' ',')"
-vault=$(expand "$vault"); projects=$(expand "$projects")
 agents=$(echo "$agents" | tr ',' ' ' | xargs)
 [ -n "$agents" ] || { echo "No AI tool selected. Pass --agents (supported: $(mp_all_agents "$ADIR" | xargs))." >&2; exit 2; }
 for a in $agents; do
@@ -112,20 +160,36 @@ done
 summary_agent=""
 for a in $agents; do [ -f "$ADIR/$a/adapter.sh" ] || continue; case " $found " in *" $a "*) summary_agent="$a"; break ;; esac; done
 if [ -z "$summary_agent" ]; then for a in $agents; do [ -f "$ADIR/$a/adapter.sh" ] && { summary_agent="$a"; break; }; done; fi
-ok "vault=$vault  projects=$projects  name=$name  language=$lang"
+
+# Final vault list, default first: "name|folder|projects"
+MP_VAULT_LIST=""
+for n in $default_vault $vnames; do
+  case "$MP_VAULT_LIST" in "$n|"*|*$'\n'"$n|"*) continue ;; esac
+  v=$(expand "$(vget "$n" f)"); p=$(vget "$n" p); [ -n "$p" ] && p=$(expand "$p")
+  vset "$n" "$v" "$p"
+  MP_VAULT_LIST="${MP_VAULT_LIST:+$MP_VAULT_LIST$'\n'}$n|$v|$p"
+done
+VAULT=$(vget "$default_vault" f)
+export VAULT MP_HOME MP_VAULT_LIST
+while IFS='|' read -r n v p; do
+  ok "vault $n: $v${p:+  (projects: $p)}$([ "$n" = "$default_vault" ] && echo '  [default]')"
+  case "$v" in *" "*) warn "Vault '$n' path contains spaces. Some tools' @import may not handle it; a path without spaces is recommended." ;; esac
+done <<<"$MP_VAULT_LIST"
+ok "name=$name  language=$lang"
 ok "agents=$agents  (summaries written by: ${summary_agent:-none, rules-only tools write the journal themselves})"
 for a in $agents; do case " $found " in *" $a "*) ;; *) warn "$a is not installed yet; its hooks are prepared but only work once it is." ;; esac; done
-case "$vault" in *" "*) warn "The vault path contains spaces. Some tools' @import may not handle it; a path without spaces is recommended." ;; esac
 installed=""; [ -f "$MP_HOME/VERSION" ] && installed=$(cat "$MP_HOME/VERSION")
-VAULT="$vault"; export VAULT MP_HOME
+vault_is_new() { [ ! -d "$1" ] || [ -z "$(ls -A "$1" 2>/dev/null)" ]; }
 
 if [ "$plan" = 1 ]; then
   say "Plan (nothing is changed)"
   if [ -n "$installed" ]; then echo "  - update MindPalace in $MP_HOME ($installed → $VERSION)"; else echo "  - install MindPalace to $MP_HOME (v$VERSION)"; fi
-  if [ "$existing_conf" = 1 ]; then echo "  - keep config $MP_HOME/mindpalace.conf (agent list set to: $agents)"; else echo "  - write config $MP_HOME/mindpalace.conf"; fi
-  if [ -d "$vault" ] && [ -n "$(ls -A "$vault" 2>/dev/null)" ]; then echo "  - vault exists, notes not touched: $vault"
-  else echo "  - create vault from template: $vault (local git: $([ "$usegit" = 1 ] && echo yes || echo no))"; fi
-  for a in $agents; do mp_with_adapter "$ADIR" "$a" adapter_plan | MP_V="$vault" perl -pe 's/\$VAULT/$ENV{MP_V}/g'; done
+  if [ "$existing_conf" = 1 ]; then echo "  - update config $MP_HOME/mindpalace.conf (vaults and agent list; other settings kept)"; else echo "  - write config $MP_HOME/mindpalace.conf"; fi
+  while IFS='|' read -r n v p; do
+    if vault_is_new "$v"; then echo "  - create vault '$n' from template: $v (local git: $([ "$usegit" = 1 ] && echo yes || echo no))"
+    else echo "  - vault '$n' exists, notes not touched: $v"; fi
+  done <<<"$MP_VAULT_LIST"
+  for a in $agents; do mp_with_adapter "$ADIR" "$a" adapter_plan | MP_V="$VAULT" perl -pe 's/\$VAULT/$ENV{MP_V}/g'; done
   exit 0
 fi
 
@@ -139,37 +203,46 @@ chmod 0755 "$MP_HOME"/*.sh "$MP_HOME"/core/*.sh; chmod 0755 "$MP_HOME"/adapters/
 [ -f "$MP_HOME/state/.installed" ] || touch "$MP_HOME/state/.installed"
 if [ -n "$installed" ]; then ok "updated ($installed → $VERSION)"; else ok "files copied (v$VERSION)"; fi
 esc() { printf '%s' "$1" | sed -e 's/[\/&|]/\\&/g' -e 's/"/\\"/g'; }
+q() { printf '%s' "$1" | sed -e 's/["\\$`]/\\&/g'; }   # for "..." in the config
+vault_block() {
+  printf '# Vaults (managed by install.sh; add one with: install.sh --vault NAME=PATH)\n'
+  printf 'VAULTS="%s"\nDEFAULT_VAULT="%s"\n' "$(printf '%s\n' "$MP_VAULT_LIST" | cut -d'|' -f1 | xargs)" "$default_vault"
+  while IFS='|' read -r n v p; do
+    printf 'VAULT_%s="%s"\nPROJECTS_%s="%s"\n' "$(vkey "$n")" "$(q "$v")" "$(vkey "$n")" "$(q "$p")"
+  done <<<"$MP_VAULT_LIST"
+}
+ctmp=$(mktemp)
 if [ "$existing_conf" = 0 ]; then
-  sed -e "s|^VAULT=.*|VAULT=\"\${MP_VAULT:-$(esc "$vault")}\"|" \
-      -e "s|^PROJECTS=.*|PROJECTS=\"$(esc "$projects")\"|" \
-      -e "s|^USER_NAME=.*|USER_NAME=\"$(esc "$name")\"|" \
+  sed -e "s|^USER_NAME=.*|USER_NAME=\"$(esc "$name")\"|" \
       -e "s|^LANGUAGE=.*|LANGUAGE=\"$(esc "$lang")\"|" \
       -e "s|^AGENTS=.*|AGENTS=\"$agents\"|" \
       -e "s|^SUMMARY_AGENT=.*|SUMMARY_AGENT=\"$summary_agent\"|" \
       -e "s|^STATE=.*|STATE=\"\${MP_STATE:-$(esc "$MP_HOME")/state}\"|" \
-      "$SRC/mindpalace.conf.example" > "$MP_HOME/mindpalace.conf"
-  ok "config written: $MP_HOME/mindpalace.conf"
+      "$SRC/mindpalace.conf.example" > "$ctmp"
 else
-  ctmp=$(mktemp)
-  sed -e "s|^AGENTS=.*|AGENTS=\"$agents\"|" "$MP_HOME/mindpalace.conf" > "$ctmp" && cat "$ctmp" > "$MP_HOME/mindpalace.conf"; rm -f "$ctmp"
-  grep -q '^AGENTS=' "$MP_HOME/mindpalace.conf" || printf '\nAGENTS="%s"\nSUMMARY_AGENT="%s"\n' "$agents" "$summary_agent" >> "$MP_HOME/mindpalace.conf"
+  sed -e "s|^AGENTS=.*|AGENTS=\"$agents\"|" "$MP_HOME/mindpalace.conf" > "$ctmp"
+  grep -q '^AGENTS=' "$ctmp" || printf '\nAGENTS="%s"\nSUMMARY_AGENT="%s"\n' "$agents" "$summary_agent" >> "$ctmp"
 fi
+# replace the vault section (and old single-vault VAULT=/PROJECTS= lines)
+grep -v -E '^(# Vaults \(managed|VAULTS=|DEFAULT_VAULT=|VAULT_[A-Za-z0-9_]+=|PROJECTS_[A-Za-z0-9_]+=|VAULT=|PROJECTS=)' "$ctmp" > "$ctmp.2"
+{ vault_block; echo; cat "$ctmp.2"; } > "$MP_HOME/mindpalace.conf"
+rm -f "$ctmp" "$ctmp.2"
+ok "config written: $MP_HOME/mindpalace.conf"
 
-# 4. Vault
-say "4/6 Vault"
-newvault=0
-if [ -d "$vault" ] && [ -n "$(ls -A "$vault" 2>/dev/null)" ]; then
-  ok "Vault already exists, notes left untouched: $vault"
-else
-  mkdir -p "$vault" "$projects"
-  cp -R "$SRC/vault-template/." "$vault/"
-  export MP_R_NAME="$name" MP_R_LANG="$lang" MP_R_VAULT="$vault" MP_R_PROJ="$projects" MP_R_DATE="$(date +%F)"
-  find "$vault" -type f -name '*.md' -print0 | while IFS= read -r -d '' f; do
-    perl -pi -e 's/\{\{USER_NAME\}\}/$ENV{MP_R_NAME}/g; s/\{\{LANGUAGE\}\}/$ENV{MP_R_LANG}/g; s/\{\{VAULT\}\}/$ENV{MP_R_VAULT}/g; s/\{\{PROJECTS\}\}/$ENV{MP_R_PROJ}/g; s/\{\{PRIVATE_DIR\}\}/private/g; s/\{\{DATE\}\}/$ENV{MP_R_DATE}/g' "$f"
+# 4. Vaults
+say "4/6 Vaults"
+new_vaults=""
+while IFS='|' read -r n v p; do
+  if ! vault_is_new "$v"; then ok "vault '$n' already exists, notes left untouched: $v"; continue; fi
+  mkdir -p "$v"; [ -n "$p" ] && mkdir -p "$p"
+  cp -R "$SRC/vault-template/." "$v/"
+  export MP_R_NAME="$name" MP_R_LANG="$lang" MP_R_VAULT="$v" MP_R_PROJ="${p:-(no projects folder)}" MP_R_DATE="$(date +%F)" MP_R_VNAME="$n"
+  find "$v" -type f -name '*.md' -print0 | while IFS= read -r -d '' f; do
+    perl -pi -e 's/\{\{USER_NAME\}\}/$ENV{MP_R_NAME}/g; s/\{\{LANGUAGE\}\}/$ENV{MP_R_LANG}/g; s/\{\{VAULT_NAME\}\}/$ENV{MP_R_VNAME}/g; s/\{\{VAULT\}\}/$ENV{MP_R_VAULT}/g; s/\{\{PROJECTS\}\}/$ENV{MP_R_PROJ}/g; s/\{\{PRIVATE_DIR\}\}/private/g; s/\{\{DATE\}\}/$ENV{MP_R_DATE}/g' "$f"
   done
-  ok "Vault created: $vault"
-  newvault=1
-fi
+  ok "vault '$n' created: $v"
+  new_vaults="$new_vaults|$v"
+done <<<"$MP_VAULT_LIST"
 
 # 5. Connect AI tools
 say "5/6 Connecting AI tools"
@@ -181,9 +254,11 @@ for a in $agents; do
     warn "$label skipped"
   fi
 done
-if [ "$newvault" = 1 ] && [ "$usegit" = 1 ] && command -v git >/dev/null && confirm "Track the vault with local git (no remote)?"; then
-  { git -C "$vault" init -q && git -C "$vault" add -A && \
-    git -C "$vault" -c user.name="MindPalace" -c user.email="mindpalace@localhost" commit -qm "Initial vault"; } && ok "vault git initialized" || warn "git init failed, skipped"
+if [ -n "$new_vaults" ] && [ "$usegit" = 1 ] && command -v git >/dev/null && confirm "Track the new vault(s) with local git (no remote)?"; then
+  printf '%s' "${new_vaults#|}" | tr '|' '\n' | while read -r v; do
+    { git -C "$v" init -q && git -C "$v" add -A && \
+      git -C "$v" -c user.name="MindPalace" -c user.email="mindpalace@localhost" commit -qm "Initial vault"; } && ok "git initialized: $v" || warn "git init failed: $v"
+  done
 fi
 
 # 6. Verify
@@ -193,7 +268,7 @@ bash "$MP_HOME/doctor.sh" || warn "doctor reported problems (see above)"
 say "Done."
 cat <<EOF
   Restart your AI tool(s) so the hooks and rules load.
-  Next:  cd "$vault"  and start your AI tool there. In the first session it gets to know you.
+  Next:  cd "$VAULT"  and start your AI tool there. In the first session it gets to know you.
   Settings: $MP_HOME/mindpalace.conf   Log: $MP_HOME/state/hook.log
   Check: bash "$MP_HOME/doctor.sh"   Uninstall: bash "$MP_HOME/uninstall.sh"
 EOF

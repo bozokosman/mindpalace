@@ -12,7 +12,7 @@ adapter_url()   { echo "https://claude.com/claude-code"; }
 adapter_plan() {
   echo "  - [Claude Code] back up $A_SETTINGS, register hooks: PreToolUse/Bash (guard), SessionStart, SessionEnd, PreCompact"
   [ "$RULES" = 1 ] && echo "  - [Claude Code] managed block importing \$VAULT/RULES.md into $A_RULES_FILE (backup first)"
-  echo "  - [Claude Code] \$VAULT/CLAUDE.md → @AGENTS.md (only if missing)"
+  echo "  - [Claude Code] CLAUDE.md → @AGENTS.md in each vault (only if missing)"
 }
 
 _claude_jq_ours='def ours: (.hooks // []) | any(.command | test("mindpalace[/\\\\]adapters[/\\\\]claude[/\\\\]hooks"));'
@@ -34,8 +34,9 @@ adapter_install() {
     | put("PreCompact";  {hooks:[{type:"command", command:$c, timeout:10}]})
   ' "$A_SETTINGS" > "$tmp" && mv "$tmp" "$A_SETTINGS"
   ok "Claude Code: hooks registered (backup: $A_SETTINGS.bak-mindpalace-$STAMP)"
-  [ "$RULES" = 1 ] && mp_rules_block "$A_RULES_FILE" "@$VAULT/RULES.md" && ok "Claude Code: rules imported in $A_RULES_FILE"
-  [ -f "$VAULT/CLAUDE.md" ] || { printf '@AGENTS.md\n' > "$VAULT/CLAUDE.md"; ok "Claude Code: $VAULT/CLAUDE.md → @AGENTS.md"; }
+  [ "$RULES" = 1 ] && mp_rules_block "$A_RULES_FILE" "@$VAULT/RULES.md
+$(mp_rules_extra)" && ok "Claude Code: rules imported in $A_RULES_FILE"
+  mp_each_vault_file CLAUDE.md '@AGENTS.md'
   return 0
 }
 

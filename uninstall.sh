@@ -11,10 +11,11 @@ YES=0; [ "${1:-}" = "--yes" ] || [ "${1:-}" = "-y" ] && YES=1
 
 [ -f "$MP_HOME/mindpalace.conf" ] || { echo "MindPalace is not installed in $MP_HOME."; exit 0; }
 # shellcheck source=/dev/null
-VAULT=""; AGENTS=""; source "$MP_HOME/mindpalace.conf"; export VAULT MP_HOME YES
+VAULT=""; VAULTS=""; AGENTS=""; source "$MP_HOME/mindpalace.conf"; export VAULT MP_HOME YES
+kept=""; for n in $VAULTS; do k=$(printf '%s' "$n" | tr '-' '_'); eval "kept=\"\$kept \${VAULT_$k:-}\""; done; kept="${kept# }"; kept="${kept:-$VAULT}"
 
 if [ "$YES" != 1 ]; then
-  read -r -p "Disconnect MindPalace from: $AGENTS, and move $MP_HOME aside? Your vault stays. [y/N]: " a || true
+  read -r -p "Disconnect MindPalace from: $AGENTS, and move $MP_HOME aside? Your vaults stay. [y/N]: " a || true
   [[ "$a" =~ ^[yY] ]] || { echo "Cancelled."; exit 0; }
 fi
 for a in $AGENTS; do
@@ -23,4 +24,4 @@ for a in $AGENTS; do
 done
 dest="$MP_HOME.removed-$STAMP"
 mv "$MP_HOME" "$dest" && ok "$MP_HOME moved to $dest (delete it when you are sure)"
-echo "Done. Your vault was not touched: $VAULT"
+echo "Done. Your vaults were not touched: $kept"

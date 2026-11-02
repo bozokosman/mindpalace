@@ -11,10 +11,10 @@ The shippable, agent-installable, tool-neutral version of the second-brain syste
 
 ## Layout
 - `install.sh` / `install.ps1` / `uninstall.sh` / `doctor.sh`: lifecycle; everything installs to `~/.mindpalace/`
-- `core/`: tool-neutral logic (memory, guard rules, summarizer, catch-up). Never put tool-specific code here.
+- `core/`: tool-neutral logic (memory, guard rules, summarizer, catch-up). Never put tool-specific code here. Multiple vaults: always call `mp_resolve <cwd>` before using `$VAULT`/`$PROJECTS`.
 - `adapters/<tool>/`: `install.sh` (adapter_label/cli/plan/install/uninstall/doctor) for every tool; full tools also have `adapter.sh` (mp_agent_messages, mp_agent_llm, session helpers) and `hooks/`. Rules-only tools are one `mp_rules_only` line.
 - `lib/install-lib.sh`: helpers shared by the installer, doctor, uninstaller and adapters
-- `vault-template/`: copied to a new vault; `{{USER_NAME}}`, `{{LANGUAGE}}`, `{{VAULT}}`, `{{PROJECTS}}`, `{{PRIVATE_DIR}}`, `{{DATE}}` are filled in
+- `vault-template/`: copied to each new vault; `{{VAULT_NAME}}`, `{{USER_NAME}}`, `{{LANGUAGE}}`, `{{VAULT}}`, `{{PROJECTS}}`, `{{PRIVATE_DIR}}`, `{{DATE}}` are filled in
 - `AGENT_INSTALL.md`: the canonical recipe an agent follows; keep it in sync with installer flags
 - `tests/run.sh`: offline test suite (throwaway HOME and XDG_CONFIG_HOME, fake AI CLIs, `tests/fixtures/` transcripts). Tests must never touch the real home.
 
