@@ -1,0 +1,6 @@
+{"sessionId":"abcd1234-0000-0000-0000-000000000000","projectHash":"proj1","startTime":"2026-01-01T10:00:00.000Z","lastUpdated":"2026-01-01T10:00:00.000Z","kind":"main"}
+{"id":"u0","timestamp":"2026-01-01T09:59:00.000Z","type":"user","content":"/memory show"}
+{"id":"u1","timestamp":"2026-01-01T10:00:00.000Z","type":"user","content":[{"text":"Build the checkout page with Stripe."}]}
+{"id":"g1","timestamp":"2026-01-01T10:03:00.000Z","type":"gemini","content":"Created src/checkout.ts. Prices stay in integer cents.","model":"gemini-3.5-flash","toolCalls":[{"id":"t1","name":"run_shell_command","args":{"command":"pytest"},"status":"success"}]}
+{"$set":{"lastUpdated":"2026-01-01T10:03:00.000Z"}}
+{"id":"u2","timestamp":"2026-01-01T10:05:00.000Z","type":"user","content":"Great, add webhooks next time."}

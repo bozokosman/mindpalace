@@ -1,0 +1,5 @@
+{"sessionId":"g1","projectHash":"abc","startTime":"2026-01-01T10:00:00.000Z","messages":[
+ {"id":"1","type":"user","content":"Build the checkout page with Stripe.","timestamp":"2026-01-01T10:00:00.000Z"},
+ {"id":"2","type":"gemini","content":"Created src/checkout.ts. Prices stay in integer cents.","timestamp":"2026-01-01T10:03:00.000Z","toolCalls":[]},
+ {"id":"3","type":"info","content":"some info","timestamp":"2026-01-01T10:03:10.000Z"},
+ {"id":"4","type":"user","content":[{"text":"Great, add webhooks next time."}],"timestamp":"2026-01-01T10:05:00.000Z"}]}

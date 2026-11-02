@@ -1,0 +1,6 @@
+{"type":"user","timestamp":"2026-01-01T10:00:00.000Z","cwd":"/x","sessionId":"c1","message":{"content":"Build the checkout page with Stripe."}}
+{"type":"user","timestamp":"2026-01-01T10:00:01.000Z","message":{"content":"<system-reminder>injected</system-reminder>"}}
+{"type":"assistant","timestamp":"2026-01-01T10:03:00.000Z","message":{"content":[{"type":"thinking","thinking":"hidden"},{"type":"text","text":"Created src/checkout.ts. Prices stay in integer cents."}]}}
+{"type":"assistant","timestamp":"2026-01-01T10:03:30.000Z","isSidechain":true,"message":{"content":[{"type":"text","text":"subagent noise"}]}}
+{"type":"user","timestamp":"2026-01-01T10:05:00.000Z","message":{"content":[{"type":"tool_result","content":"tool output"},{"type":"text","text":"Great, add webhooks next time."}]}}
+{"type":"ai-title","aiTitle":"Stripe checkout"}

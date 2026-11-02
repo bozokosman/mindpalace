@@ -1,0 +1,7 @@
+{"timestamp":"2026-01-01T10:00:00.000Z","type":"session_meta","payload":{"id":"x1","session_id":"x1","timestamp":"2026-01-01T10:00:00.000Z","cwd":"/x","originator":"codex_cli_rs"}}
+{"timestamp":"2026-01-01T10:00:00.100Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"<environment_context>cwd</environment_context>"}]}}
+{"timestamp":"2026-01-01T10:00:00.200Z","type":"response_item","payload":{"type":"message","role":"developer","content":[{"type":"input_text","text":"system stuff"}]}}
+{"timestamp":"2026-01-01T10:00:05.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Build the checkout page with Stripe."}]}}
+{"timestamp":"2026-01-01T10:00:06.000Z","type":"response_item","payload":{"type":"function_call","name":"shell","arguments":"{}"}}
+{"timestamp":"2026-01-01T10:03:00.000Z","type":"response_item","payload":{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Created src/checkout.ts. Prices stay in integer cents."}]}}
+{"timestamp":"2026-01-01T10:05:00.000Z","type":"response_item","payload":{"type":"message","role":"user","content":[{"type":"input_text","text":"Great, add webhooks next time."}]}}
