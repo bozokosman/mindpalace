@@ -1,6 +1,6 @@
 # MindPalace installer for Windows (PowerShell).
 # Finds Git Bash (Git for Windows) and runs install.sh with the same arguments.
-#   powershell -ExecutionPolicy Bypass -File install.ps1 --yes --vault ~/MindPalace --name "Ada" --lang English
+#   powershell -ExecutionPolicy Bypass -File install.ps1 --yes --vault personal=~/Personal --name "Ada" --lang English
 $ErrorActionPreference = "Stop"
 
 $candidates = @()
