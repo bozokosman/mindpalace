@@ -25,3 +25,7 @@ mp_agent_llm() {
   local m=(); [ -n "${CODEX_SUMMARY_MODEL:-}" ] && m=(-m "$CODEX_SUMMARY_MODEL")
   mp_timeout 240 codex exec - --ephemeral --skip-git-repo-check --sandbox read-only "${m[@]}"
 }
+
+# Maintainer: UNSUPPORTED (no mp_agent_edit). `codex exec --sandbox workspace-write` could edit the vault, but it
+# also allows shell commands and reading every file, so the private folder cannot be kept off limits. The
+# maintainer therefore stays off when Codex is the only tool; another connected tool can run it.

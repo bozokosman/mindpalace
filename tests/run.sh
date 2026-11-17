@@ -53,6 +53,7 @@ t "rerun: no duplicate hooks"  "[ \$(jq '[.hooks[][].hooks[].command | select(te
 t "rerun: one rules block"     "[ \$(grep -c 'mindpalace:start' '$T/.claude/CLAUDE.md') = 1 ]"
 
 sed -i.bak "s|^RETRY_WAIT=.*|RETRY_WAIT=\"0 0\"|" "$H/mindpalace.conf"
+sed -i.bak "s|^MAINTAIN=.*|MAINTAIN=\"off\"|" "$H/mindpalace.conf"
 echo "transcript parsing (normalized messages)"
 for a in claude codex gemini; do
   f="$FX/$a.jsonl"; [ "$a" = gemini ] && f="$FX/gemini.json"
@@ -182,6 +183,118 @@ for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do grep -qF '[x]' "
 t "unsummarized session recovered in background" "grep -q '\[x\] Stripe checkout' '$V/journal/'\$(date +%F).md"
 t "recovery does nothing when RECOVER=off"       "sed -i.bak 's|^RECOVER=.*|RECOVER=\"off\"|' '$H/mindpalace.conf'; MP_HOME='$H' bash -c 'source \"\$MP_HOME/core/common.sh\"; mp_recover_start claude x; echo done' | grep -qx done; sed -i.bak 's|^RECOVER=.*|RECOVER=\"on\"|' '$H/mindpalace.conf'"
 rm -rf "$T/.claude/projects/p1"
+
+echo "maintainer"
+cat > "$T/bin/claude-maint" <<'X'
+#!/bin/bash
+# Fake claude. With the maintainer's flags it plays the maintainer: checks off candidate lines and writes a note.
+cat >/dev/null
+if [[ "$*" == *"--permission-mode acceptEdits"* ]]; then
+  echo "$*" >"$FAKE_ARGS"; echo "cwd=$PWD" >>"$FAKE_ARGS"
+  [ -n "$FAKE_EDIT_FAIL" ] && { echo "529 overloaded" >&2; exit 1; }
+  for f in inbox/candidates-*.md; do [ -f "$f" ] && perl -pi -e 's/^- \[ \]/- [x]/' "$f"; done
+  mkdir -p knowledge; echo "# Prices in cents" >knowledge/prices.md
+  [ -n "$FAKE_TOUCH_PRIVATE" ] && echo x >private/leak.md
+  echo "processed 1 line"; exit 0
+fi
+printf 'TITLE: Stripe checkout (fake)\n- Done: x\n'
+X
+chmod +x "$T/bin/claude-maint"; cp "$T/bin/claude" "$T/bin/claude.keep"; cp "$T/bin/claude-maint" "$T/bin/claude"
+export FAKE_ARGS="$T/maint-args"
+sed -i.bak "s|^MAINTAIN=.*|MAINTAIN=\"on\"|; s|^MAINTAIN_AGENT=.*|MAINTAIN_AGENT=\"claude\"|" "$H/mindpalace.conf"
+git init -q --bare "$T/remote.git"; git -C "$V" remote add origin "$T/remote.git"
+ml() { MP_HOME="$H" bash "$H/core/maintain.sh" "$@" 2>&1; }
+# fresh candidates for the test
+mkdir -p "$V/inbox"; printf -- '---\ntype: knowledge\n---\n- [ ] knowledge | prices in integer cents\n' >"$V/inbox/candidates-2026-01-01.md"
+head_before=$(git -C "$V" rev-parse HEAD)
+ml brain >"$T/ml.out"
+t "config enables maintainer for claude"   "grep -qx 'MAINTAIN_AGENT=\"claude\"' '$H/mindpalace.conf'"
+t "maintainer wrote the note"              "[ -f '$V/knowledge/prices.md' ]"
+t "sorted candidate file archived"         "[ ! -f '$V/inbox/candidates-2026-01-01.md' ] && [ -f '$V/archive/candidates-2026-01-01.md' ]"
+t "committed locally, tree clean"          "[ \"\$(git -C '$V' rev-parse HEAD)\" != '$head_before' ] && git -C '$V' log -1 --format=%s | grep -q '^Maintainer: ' && [ -z \"\$(git -C '$V' status --porcelain)\" ]"
+t "never pushed (remote stays empty)"      "[ -z \"\$(git -C '$T/remote.git' rev-list --all 2>/dev/null)\" ]"
+t "no push command anywhere in core"       "! grep -rnE 'git +(-C +[^ ]+ +)?push( |$)' '$H/core/maintain.sh' '$H/core/recover.sh' '$H/core/summarize.sh' '$H/core/common.sh' '$H/core/lessons.sh'"
+t "agent: file tools only, no Bash"        "grep -q -- '--tools Read,Edit,Write,Glob,Grep' '$FAKE_ARGS' && ! grep -q 'Bash' '$FAKE_ARGS'"
+t "agent: runs inside the vault"           "grep -qx 'cwd=$V' '$FAKE_ARGS'"
+t "agent: private folder forbidden"        "grep -q 'Read(./private/\*\*)' '$FAKE_ARGS' && grep -q 'Edit(./private/\*\*)' '$FAKE_ARGS'"
+# private touched -> no commit
+printf -- '- [ ] knowledge | another\n' >"$V/inbox/candidates-2026-01-02.md"; head_before=$(git -C "$V" rev-parse HEAD)
+FAKE_TOUCH_PRIVATE=1 ml brain >"$T/ml.out"
+t "private folder touched: error, no commit" "grep -q 'ERROR: files in private changed' '$T/ml.out' && [ \"\$(git -C '$V' rev-parse HEAD)\" = '$head_before' ]"
+rm -f "$V/private/leak.md"
+# model failure: no commit, retried
+printf -- '- [ ] knowledge | third\n' >"$V/inbox/candidates-2026-01-03.md"; head_before=$(git -C "$V" rev-parse HEAD)
+FAKE_EDIT_FAIL=1 ml brain >"$T/ml.out"
+t "model failure: retried, then no commit"   "grep -q 'retry 2/2' '$T/ml.out' && grep -q 'ERROR: maintainer model call failed' '$T/ml.out' && [ \"\$(git -C '$V' rev-parse HEAD)\" = '$head_before' ]"
+# AUTO_COMMIT off
+sed -i.bak 's|^AUTO_COMMIT=.*|AUTO_COMMIT="off"|' "$H/mindpalace.conf"
+ml brain >"$T/ml.out"
+t "AUTO_COMMIT=off: files change, no commit" "grep -q 'AUTO_COMMIT is off' '$T/ml.out' && [ \"\$(git -C '$V' rev-parse HEAD)\" = '$head_before' ] && [ -n \"\$(git -C '$V' status --porcelain)\" ]"
+git -C "$V" add -A >/dev/null; git -C "$V" -c user.name=t -c user.email=t@t commit -qm "test: settle" ; sed -i.bak 's|^AUTO_COMMIT=.*|AUTO_COMMIT="on"|' "$H/mindpalace.conf"
+# not a git repo
+mv "$V/.git" "$T/git.keep"; printf -- '- [ ] knowledge | fourth\n' >"$V/inbox/candidates-2026-01-04.md"
+ml brain >"$T/ml.out"
+t "vault without git: works, commit skipped" "grep -q 'not a git repository' '$T/ml.out' && [ -f '$V/archive/candidates-2026-01-04.md' ]"
+mv "$T/git.keep" "$V/.git"
+# off, unsupported, locked
+sed -i.bak 's|^MAINTAIN=.*|MAINTAIN="off"|' "$H/mindpalace.conf"; printf -- '- [ ] knowledge | fifth\n' >"$V/inbox/candidates-2026-01-05.md"
+ml brain >/dev/null
+t "MAINTAIN=off: nothing happens"            "grep -q '^- \[ \]' '$V/inbox/candidates-2026-01-05.md'"
+sed -i.bak 's|^MAINTAIN=.*|MAINTAIN="on"|; s|^MAINTAIN_AGENT=.*|MAINTAIN_AGENT="codex"|' "$H/mindpalace.conf"
+ml brain >"$T/ml.out"
+t "codex: unsupported, stays off"            "grep -q 'unsupported: codex' '$T/ml.out' && grep -q '^- \[ \]' '$V/inbox/candidates-2026-01-05.md'"
+t "gemini: unsupported too"                  "! grep -q '^mp_agent_edit()' '$H/adapters/gemini/adapter.sh' '$H/adapters/codex/adapter.sh'"
+sed -i.bak 's|^MAINTAIN_AGENT=.*|MAINTAIN_AGENT="claude"|' "$H/mindpalace.conf"
+sleep 300 & LV=$!; LVS=$(MP_HOME="$H" bash -c 'source "$MP_HOME/core/common.sh"; mp_proc_start '"$LV")
+printf '%s %s\n' "$LV" "$LVS" >"$H/state/maintain-brain.pid"
+ml brain >"$T/ml.out"
+t "second maintainer waits for the running one" "grep -q 'another maintainer is running' '$T/ml.out' && [ -e '$H/state/maintain-brain.again' ] && grep -q '^- \[ \]' '$V/inbox/candidates-2026-01-05.md'"
+kill $LV 2>/dev/null; rm -f "$H/state/maintain-brain.pid" "$H/state/maintain-brain.again"
+printf '999999 Mon Jan  1 00:00:00 2001\n' >"$H/state/maintain-brain.pid"
+ml brain >"$T/ml.out"
+t "stale maintainer lock is taken over"      "grep -q 'stale lock' '$T/ml.out' && [ -f '$V/archive/candidates-2026-01-05.md' ]"
+# a finished summary starts the maintainer by itself
+printf -- '- [ ] knowledge | sixth\n' >"$V/inbox/candidates-2026-01-06.md"
+MP_HOME="$H" bash "$H/core/summarize.sh" claude "$T/code/app" "$FX/claude.jsonl" s-trigger end >/dev/null 2>&1
+for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do [ -f "$V/archive/candidates-2026-01-06.md" ] && break; sleep 0.5; done
+t "summary end triggers the maintainer"      "[ -f '$V/archive/candidates-2026-01-06.md' ]"
+cp "$T/bin/claude.keep" "$T/bin/claude"; rm -f "$T/bin/claude.keep"
+sed -i.bak "s|^MAINTAIN=.*|MAINTAIN=\"off\"|" "$H/mindpalace.conf"
+
+echo "lessons cycle (fake dates)"
+LV="$T/lessons-vault"; mkdir -p "$LV/memory"; cp "$V/memory/mistakes.md" "$LV/memory/mistakes.md"
+perl -0pi -e 's/(## Active rules\n<!--[^\n]*-->\n)/$1- [c-trial] (trial) Always run the tests before saying done.\n- [d-rule] (rule) Never edit generated files.\n/; s/(## Records\n<!--[^\n]*-->\n)/$1### a-observed\n1 · observed · 2026-02-01\n- 2026-02-01: once\n\n### b-second\n2 · observed · 2026-02-01\n- 2026-02-01: twice\n\n### c-trial\n2 · trial · 2026-01-01\n- 2026-01-01: x\n\n### d-rule\n3 · rule · 2026-01-01\n- 2026-01-01: y\n/' "$LV/memory/mistakes.md"
+lz() { MP_HOME="$H" MP_TODAY="$1" bash "$H/core/lessons.sh" "$LV"; }
+lz 2026-02-05 >"$T/lz.out"
+t "count 2 becomes trial + rule line"        "grep -q '^2 · trial · 2026-02-01' '$LV/memory/mistakes.md' && grep -q '^- \[b-second\] (trial)' '$LV/memory/mistakes.md'"
+t "observed (count 1) stays observed"        "grep -q '^1 · observed · 2026-02-01' '$LV/memory/mistakes.md'"
+t "trial 35 days without repeat becomes rule" "grep -q '^2 · rule · 2026-01-01' '$LV/memory/mistakes.md' && grep -q '^- \[c-trial\] (rule)' '$LV/memory/mistakes.md'"
+t "trial under 30 days is kept"              "grep -q '^- \[b-second\] (trial)' '$LV/memory/mistakes.md'"
+t "rule under 90 days is kept"               "grep -q '^### d-rule' '$LV/memory/mistakes.md' && [ ! -f '$LV/archive/mistakes-retired.md' ]"
+sum1=$(cksum <"$LV/memory/mistakes.md"); lz 2026-02-05 >"$T/lz.out"
+t "second run on the same day changes nothing" "[ \"\$(cksum <'$LV/memory/mistakes.md')\" = '$sum1' ] && grep -q '0 promoted, 0 retired' '$T/lz.out'"
+lz 2026-04-10 >"$T/lz.out"
+t "rule 99 days without repeat is retired"   "grep -q '^### d-rule' '$LV/archive/mistakes-retired.md' && ! grep -q 'd-rule' '$LV/memory/mistakes.md'"
+t "retired rule keeps its text in the archive" "grep -q 'Rule was: Never edit generated files' '$LV/archive/mistakes-retired.md'"
+t "promoted rule can retire in the same run"   "grep -q '^### c-trial' '$LV/archive/mistakes-retired.md' && grep -q '^2 · rule · 2026-02-01' '$LV/memory/mistakes.md'"
+t "retired file has frontmatter"             "head -1 '$LV/archive/mistakes-retired.md' | grep -qx -- '---'"
+# cap on active rules
+cat >>"$LV/memory/mistakes.md" <<'X'
+
+### e-new
+2 · trial · 2026-04-01
+- 2026-04-01: e
+
+### f-newer
+2 · trial · 2026-04-05
+- 2026-04-05: f
+X
+perl -0pi -e 's/(## Active rules\n<!--[^\n]*-->\n)/$1- [e-new] (trial) Rule E.\n- [f-newer] (trial) Rule F.\n/' "$LV/memory/mistakes.md"
+sed -i.bak 's|^LESSON_MAX_RULES=.*|LESSON_MAX_RULES=2|' "$H/mindpalace.conf"
+lz 2026-04-10 >"$T/lz.out"
+t "more than the cap: unused longest is retired" "grep -q '^### b-second' '$LV/archive/mistakes-retired.md' && grep -q '^### e-new' '$LV/memory/mistakes.md' && grep -q '^### f-newer' '$LV/memory/mistakes.md'"
+sed -i.bak 's|^LESSON_MAX_RULES=.*|LESSON_MAX_RULES=15|' "$H/mindpalace.conf"
+t "dates work without GNU date"              "[ \"\$(MP_HOME='$H' bash -c 'source \"\$MP_HOME/core/common.sh\"; mp_days_between 2026-01-01 2026-03-01')\" = 59 ]"
 
 echo "rules-only tools (zed, qwen)"
 mkdir -p "$T/.qwen"; echo "# my qwen notes" > "$T/.qwen/QWEN.md"

@@ -44,3 +44,15 @@ RETRY_WAIT="20 60"            # seconds to wait before each retry (two retries).
 EMPTY_RETRY_MIN_CHARS=8000    # a long conversation that gets an empty answer is tried once more
 RECOVER="on"                  # at session start, recover unsummarized sessions and pending maintenance in the background
 OPEN_STALE_SEC=7200           # open-session record without a verifiable PID counts as dead after this idle time
+
+# Maintainer: after each session summary an AI agent sorts inbox notes into the vault, updates SUMMARY.md and
+# agent/notes.md, counts corrections in memory/mistakes.md, and a script applies the lessons date rules.
+# Only tools with a safe file-edit mode can run it (Claude Code). Codex and Gemini: unsupported, stays off.
+MAINTAIN="on"                 # on | off
+MAINTAIN_AGENT="claude"       # which tool's CLI edits the vault (empty = nobody)
+AUTO_COMMIT="on"              # commit to the vault's git repo (local only; MindPalace NEVER pushes)
+CLAUDE_MAINTAIN_MODEL="haiku"
+MAINTAIN_TIMEOUT=600
+LESSON_TRIAL_DAYS=30          # trial rule that does not repeat this long becomes a rule
+LESSON_RETIRE_DAYS=90         # rule that does not repeat this long is archived
+LESSON_MAX_RULES=15           # active rules at most; the one unused longest is retired

@@ -49,6 +49,7 @@ if [ "${#conv}" -lt "$MIN_CONV_CHARS" ]; then
   log "short conversation (${#conv} chars), summary skipped"
   summary="EMPTY"
 else
+  topics=$(grep '^### ' "$VAULT/memory/mistakes.md" 2>/dev/null | sed 's/^### //' | paste -sd, -)
   prompt="Below is the transcript of an AI coding assistant session (project: $project). Write a short journal entry for long-term memory, in $LANGUAGE.
 
 Rules:
@@ -58,11 +59,17 @@ Rules:
   - Done
   - Decisions
   - Open / next step
+  - Tried and failed (an approach that was tried and did not work, and why; so the next session does not repeat it)
   - Repeated mistake (only if the same mistake happened 2+ times in this session)
   - Learned about the user (preferences, habits)
 - At the end, for each lasting fact that will be useful later (technical knowledge, tool, person, decision), write one line:
   NOTE: <target: knowledge|toolbox|profile|decision> | <one-sentence fact>
   Skip NOTE lines if there are none. Do not repeat the journal. At most 5.
+- If the user corrected the assistant's behavior, or the assistant repeated a mistake, write one extra line for each:
+  NOTE: correction | <topic> | <what went wrong and what is right, one sentence>
+  <topic>: if one of the existing topics fits, write it exactly: ${topics:-none}. Otherwise invent a short new kebab-case name. No line if there was no correction.
+- If the assistant has its own observation, concern or suggestion for the user from this session (a risk it saw, a recurring problem), write at most 2 lines, none if there is nothing:
+  NOTE: agent | <observation, one sentence, honest and plain>
 - NEVER write passwords, API keys, tokens or .env contents. Do not invent anything that is not in the transcript.
 - Keep file paths and concrete names. No filler. Output plain text only, no preamble.
 
@@ -111,4 +118,5 @@ if [ "$mode" = end ] && ! grep -q ",$sid," "$csv" 2>/dev/null; then   # one row 
   echo "$today,$start,$project,$active,$count,$sid,\"$title\",$agent" >>"$csv"
 fi
 [ -z "$failed" ] && echo "$total" >"$ofs_file"
+[ "$mode" = end ] && [ -z "$failed" ] && mp_maintain_bg "$VAULT_NAME"
 exit 0

@@ -27,6 +27,12 @@ done
 [ -n "${SUMMARY_AGENT:-}" ] && [ -f "$MP_HOME/adapters/$SUMMARY_AGENT/adapter.sh" ] && { command -v "$(source "$MP_HOME/adapters/$SUMMARY_AGENT/install.sh"; adapter_cli)" >/dev/null \
   && ok "summaries written by: $SUMMARY_AGENT" || bad "SUMMARY_AGENT=$SUMMARY_AGENT is not installed; set another one in the config"; }
 
+if [ "${MAINTAIN:-on}" = off ]; then ok "maintainer: off"
+elif [ -z "${MAINTAIN_AGENT:-}" ]; then warn "maintainer: no connected tool supports it safely (needs Claude Code); it stays off"
+elif ! grep -q '^mp_agent_edit()' "$MP_HOME/adapters/$MAINTAIN_AGENT/adapter.sh" 2>/dev/null; then warn "maintainer: unsupported for $MAINTAIN_AGENT (no safe file-edit mode); it stays off"
+else ok "maintainer: on, run by $MAINTAIN_AGENT (AUTO_COMMIT=${AUTO_COMMIT:-on}, never pushes)"; fi
+for f in core/maintain.sh core/lessons.sh core/prompts/maintain.md; do [ -f "$MP_HOME/$f" ] || bad "missing $MP_HOME/$f"; done
+
 if [ -z "${VAULTS:-}" ] && [ -n "${VAULT:-}" ]; then VAULTS=main; DEFAULT_VAULT=main; VAULT_main="$VAULT"; PROJECTS_main="${PROJECTS:-}"; fi
 [ -n "${VAULTS:-}" ] || bad "no vaults in the config"
 for n in $VAULTS; do

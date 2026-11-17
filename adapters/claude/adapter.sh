@@ -28,3 +28,12 @@ mp_agent_llm() {
   mp_timeout 180 claude -p --model "${CLAUDE_SUMMARY_MODEL:-haiku}" --effort "${CLAUDE_SUMMARY_EFFORT:-low}" \
     --tools "" --no-session-persistence
 }
+
+# Maintainer: prompt on stdin, edits files in the current folder (the vault). Read/Edit/Write/Glob/Grep only,
+# no Bash, edits limited to the working folder (acceptEdits), the private folder forbidden, nothing asked, nothing saved.
+mp_agent_edit() {
+  local pd="${PRIVATE_DIR:-private}"
+  mp_timeout "${MAINTAIN_TIMEOUT:-600}" claude -p --model "${CLAUDE_MAINTAIN_MODEL:-haiku}" --effort low \
+    --tools "Read,Edit,Write,Glob,Grep" --permission-mode acceptEdits --permission-prompts none \
+    --disallowedTools "Read(./$pd/**)" "Edit(./$pd/**)" --no-session-persistence
+}

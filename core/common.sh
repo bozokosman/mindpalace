@@ -139,17 +139,18 @@ mp_lock_wait() {   # $1 lock file, $2 max seconds: wait for a live holder
 mp_permanent_error() {
   printf '%s' "$1" | grep -Eiq 'authenticat|unauthori[sz]ed|\b401\b|\b403\b|invalid.{0,20}(token|api key)|oauth|not logged in|please log ?in|/login|credit balance|permission denied|command not found|no such file or directory|unknown option|unrecognized (option|arguments)'
 }
-# mp_llm_run <agent> <prompt>: answer on stdout; return 0 = non-empty answer, 1 = failed.
-# Retries use the waits in $RETRY_WAIT (seconds, space separated; tests set "0 0").
-mp_llm_run() {
-  local agent="$1" prompt="$2" out err rc i=0 waits w n
+# mp_model_run <adapter function> <needs output 1|0> <agent> <prompt>: one model call with retries.
+# Retries use the waits in $RETRY_WAIT (seconds, space separated; tests set "0 0"). A timeout is final.
+mp_model_run() {
+  local fn="$1" needout="$2" agent="$3" prompt="$4" out err rc i=0 waits w n
   out=$(mktemp); err=$(mktemp)
   # shellcheck disable=SC2086
   set -- $RETRY_WAIT; waits=("$@"); n=${#waits[@]}
   while :; do
-    ( mp_adapter "$agent" && printf '%s' "$prompt" | mp_agent_llm ) >"$out" 2>"$err"; rc=$?
-    if [ "$rc" = 0 ] && [ -s "$out" ]; then cat "$out"; rm -f "$out" "$err"; return 0; fi
+    ( mp_adapter "$agent" && printf '%s' "$prompt" | "$fn" ) >"$out" 2>"$err"; rc=$?
+    if [ "$rc" = 0 ] && { [ "$needout" = 0 ] || [ -s "$out" ]; }; then cat "$out"; rm -f "$out" "$err"; return 0; fi
     mp_log "model call by '$agent' failed (rc=$rc): $(head -c 300 "$err" | mp_scrub | tr '\n' ' ')"
+    if [ "$rc" = 124 ] || [ "$rc" = 142 ]; then mp_log "ERROR: model call timed out, not retrying"; rm -f "$out" "$err"; return 1; fi
     if [ "$rc" = 127 ] || mp_permanent_error "$(head -c 4000 "$out" "$err" 2>/dev/null)"; then
       mp_log "ERROR: permanent-looking failure (auth/setup), not retrying"; rm -f "$out" "$err"; return 1
     fi
@@ -159,6 +160,8 @@ mp_llm_run() {
     sleep "$w"
   done
 }
+mp_llm_run()  { mp_model_run mp_agent_llm 1 "$1" "$2"; }    # <agent> <prompt>: summary text on stdout
+mp_edit_run() { mp_model_run mp_agent_edit 0 "$1" "$2"; }   # <agent> <prompt>: the agent edits files in the current folder
 
 # Run a command detached from the agent so it never delays exit.
 mp_detach() {

@@ -30,3 +30,6 @@ mp_agent_llm() {
   mp_timeout 240 gemini -p "Follow the instructions in the text below exactly. Do not use any tools." \
     -m "${GEMINI_SUMMARY_MODEL:-flash-lite}" -o text --approval-mode plan
 }
+
+# Maintainer: UNSUPPORTED (no mp_agent_edit). Gemini's non-interactive approval modes cannot restrict edits to
+# the vault or exclude the private folder, so the maintainer stays off when Gemini is the only tool.

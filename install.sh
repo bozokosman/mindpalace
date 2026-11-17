@@ -6,7 +6,7 @@
 #   ./install.sh --yes [options]     no questions; defaults for anything not given
 # Options: --agents LIST (e.g. claude,codex; default: every supported tool found)
 #          --vault NAME=DIR (repeat for several vaults; adds to existing ones)  --projects NAME=DIR
-#          --default NAME  --name YOUR_NAME  --lang LANGUAGE  --no-rules  --no-git
+#          --default NAME  --name YOUR_NAME  --lang LANGUAGE  --no-rules  --no-git  --no-maintainer
 # Windows: run from Git Bash, or use install.ps1 (it finds Git Bash for you).
 # Safe to run again: nothing is duplicated, an existing vault or config is never overwritten.
 set -euo pipefail
@@ -18,7 +18,7 @@ MP_HOME="${MP_HOME:-$HOME/.mindpalace}"
 VERSION=$(cat "$SRC/VERSION")
 ADIR="$SRC/adapters"
 
-YES=0; RULES=1; usegit=1; checkonly=0; plan=0
+YES=0; RULES=1; usegit=1; checkonly=0; plan=0; maintain=on
 vault_args=(); projects_args=(); default_cli=""; name=""; lang=""; agents=""
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -33,7 +33,8 @@ while [ $# -gt 0 ]; do
     --lang) lang="$2"; shift ;;
     --no-rules) RULES=0 ;;
     --no-git) usegit=0 ;;
-    -h|--help) sed -n '2,12p' "$0"; exit 0 ;;
+    --no-maintainer) maintain=off ;;
+    -h|--help) sed -n '2,13p' "$0"; exit 0 ;;
     *) echo "Unknown option: $1" >&2; exit 2 ;;
   esac
   shift
@@ -161,6 +162,11 @@ summary_agent=""
 for a in $agents; do [ -f "$ADIR/$a/adapter.sh" ] || continue; case " $found " in *" $a "*) summary_agent="$a"; break ;; esac; done
 if [ -z "$summary_agent" ]; then for a in $agents; do [ -f "$ADIR/$a/adapter.sh" ] && { summary_agent="$a"; break; }; done; fi
 
+maintain_agent=""   # first connected tool whose adapter can edit files safely (others: unsupported)
+if [ "$maintain" = on ]; then
+  for a in $agents; do grep -q '^mp_agent_edit()' "$ADIR/$a/adapter.sh" 2>/dev/null && { maintain_agent="$a"; break; }; done
+fi
+
 # Final vault list, default first: "name|folder|projects"
 MP_VAULT_LIST=""
 for n in $default_vault $vnames; do
@@ -177,6 +183,9 @@ while IFS='|' read -r n v p; do
 done <<<"$MP_VAULT_LIST"
 ok "name=$name  language=$lang"
 ok "agents=$agents  (summaries written by: ${summary_agent:-none, rules-only tools write the journal themselves})"
+if [ "$maintain" = off ]; then ok "maintainer: off (--no-maintainer)"
+elif [ -n "$maintain_agent" ]; then ok "maintainer: on, run by $maintain_agent (commits locally if the vault is a git repo, never pushes)"
+else warn "maintainer: no connected tool supports it safely (needs Claude Code); it stays off"; fi
 for a in $agents; do case " $found " in *" $a "*) ;; *) warn "$a is not installed yet; its hooks are prepared but only work once it is." ;; esac; done
 installed=""; [ -f "$MP_HOME/VERSION" ] && installed=$(cat "$MP_HOME/VERSION")
 vault_is_new() { [ ! -d "$1" ] || [ -z "$(ls -A "$1" 2>/dev/null)" ]; }
@@ -189,6 +198,7 @@ if [ "$plan" = 1 ]; then
     if vault_is_new "$v"; then echo "  - create vault '$n' from template: $v (local git: $([ "$usegit" = 1 ] && echo yes || echo no))"
     else echo "  - vault '$n' exists, notes not touched: $v"; fi
   done <<<"$MP_VAULT_LIST"
+  if [ -n "$maintain_agent" ]; then echo "  - maintainer: after each session, $maintain_agent sorts inbox notes into the vault and commits locally if the vault is a git repo (never pushes); turn off with MAINTAIN=off"; fi
   for a in $agents; do mp_with_adapter "$ADIR" "$a" adapter_plan | MP_V="$VAULT" perl -pe 's/\$VAULT/$ENV{MP_V}/g'; done
   exit 0
 fi
@@ -217,11 +227,14 @@ if [ "$existing_conf" = 0 ]; then
       -e "s|^LANGUAGE=.*|LANGUAGE=\"$(esc "$lang")\"|" \
       -e "s|^AGENTS=.*|AGENTS=\"$agents\"|" \
       -e "s|^SUMMARY_AGENT=.*|SUMMARY_AGENT=\"$summary_agent\"|" \
+      -e "s|^MAINTAIN=.*|MAINTAIN=\"$maintain\"|" \
+      -e "s|^MAINTAIN_AGENT=.*|MAINTAIN_AGENT=\"$maintain_agent\"|" \
       -e "s|^STATE=.*|STATE=\"\${MP_STATE:-$(esc "$MP_HOME")/state}\"|" \
       "$SRC/mindpalace.conf.example" > "$ctmp"
 else
   sed -e "s|^AGENTS=.*|AGENTS=\"$agents\"|" "$MP_HOME/mindpalace.conf" > "$ctmp"
   grep -q '^AGENTS=' "$ctmp" || printf '\nAGENTS="%s"\nSUMMARY_AGENT="%s"\n' "$agents" "$summary_agent" >> "$ctmp"
+  grep -q '^MAINTAIN=' "$ctmp" || printf '\nMAINTAIN="%s"\nMAINTAIN_AGENT="%s"\nAUTO_COMMIT="on"\n' "$maintain" "$maintain_agent" >> "$ctmp"
 fi
 # replace the vault section (and old single-vault VAULT=/PROJECTS= lines)
 grep -v -E '^(# Vaults \(managed|VAULTS=|DEFAULT_VAULT=|VAULT_[A-Za-z0-9_]+=|PROJECTS_[A-Za-z0-9_]+=|VAULT=|PROJECTS=)' "$ctmp" > "$ctmp.2"
@@ -255,7 +268,7 @@ for a in $agents; do
   fi
 done
 if [ -n "$new_vaults" ] && [ "$usegit" = 1 ] && command -v git >/dev/null && confirm "Track the new vault(s) with local git (no remote)?"; then
-  printf '%s' "${new_vaults#|}" | tr '|' '\n' | while read -r v; do
+  printf '%s\n' "${new_vaults#|}" | tr '|' '\n' | while read -r v; do
     { git -C "$v" init -q && git -C "$v" add -A && \
       git -C "$v" -c user.name="MindPalace" -c user.email="mindpalace@localhost" commit -qm "Initial vault"; } && ok "git initialized: $v" || warn "git init failed: $v"
   done

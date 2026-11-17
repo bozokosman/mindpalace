@@ -4,7 +4,9 @@ A vault of {{USER_NAME}}'s second brain (MindPalace): plain markdown. No code is
 
 ## Map
 - `INDEX.md`: one line per note. Look here first when searching.
+- `SUMMARY.md`: one-page overview, kept up to date by the maintainer
 - `memory/`: `profile.md` (who {{USER_NAME}} is), `last-session.md`, `open-items.md` (backlog), `mistakes.md`
+- `agent/notes.md`: the assistant's own observations and suggestions
 - `projects/<name>.md`: project summary; the `path:` field points to the code
 - `knowledge/`: things learned, reusable patterns
 - `toolbox/`: tools, subscriptions, servers (no secrets)
