@@ -23,5 +23,5 @@ mp_agent_recent_sessions() { find "$CODEX_DIR/sessions" -name 'rollout-*.jsonl' 
 # Summarizer: prompt on stdin -> final message on stdout. Ephemeral (no session saved), read-only sandbox.
 mp_agent_llm() {
   local m=(); [ -n "${CODEX_SUMMARY_MODEL:-}" ] && m=(-m "$CODEX_SUMMARY_MODEL")
-  mp_timeout 240 codex exec - --ephemeral --skip-git-repo-check --sandbox read-only "${m[@]}" 2>/dev/null
+  mp_timeout 240 codex exec - --ephemeral --skip-git-repo-check --sandbox read-only "${m[@]}"
 }

@@ -28,6 +28,21 @@ mp_path() {
 # shellcheck source=/dev/null
 source "$MP_HOME/mindpalace.conf" || exit 0
 
+# Defaults for settings added after v1.0 (an older config file keeps working).
+: "${RETRY_WAIT=20 60}"                  # seconds to wait before each retry of a model call (empty = no retries)
+: "${EMPTY_RETRY_MIN_CHARS:=8000}"       # long conversation + empty answer = one more try
+: "${MAINTAIN:=on}"                      # background maintainer (on|off)
+: "${MAINTAIN_AGENT=}"                   # tool whose CLI edits the vault (empty = none)
+: "${AUTO_COMMIT:=on}"                   # maintainer commits to the vault's git repo (never pushes)
+: "${MAINTAIN_TIMEOUT:=600}"
+: "${RECOVER:=on}"                       # recover unsummarized sessions and pending maintenance at session start
+: "${LESSON_TRIAL_DAYS:=30}"             # trial rule without a repeat for this long becomes a rule
+: "${LESSON_RETIRE_DAYS:=90}"            # rule without a repeat for this long is archived
+: "${LESSON_MAX_RULES:=15}"
+: "${OPEN_STALE_SEC:=7200}"              # open-session record without a verifiable PID counts as dead after this idle time
+: "${CLAUDE_OAUTH_TOKEN_FILE=}"
+: "${CLAUDE_MAINTAIN_MODEL:=haiku}"
+
 # Vaults. The config lists names in VAULTS and, per name, VAULT_<name> (folder) and
 # PROJECTS_<name> (code folder, may be empty). "-" in a name becomes "_" in the variable.
 mp_vkey() { printf '%s' "$1" | tr '-' '_'; }
@@ -62,6 +77,89 @@ mp_label() {
   basename "$c"
 }
 
+# ---- portable helpers (no GNU-only flags, no /proc; perl is a required dependency) ----
+mp_today() { printf '%s' "${MP_TODAY:-$(date +%F)}"; }            # MP_TODAY lets tests fake the date
+mp_now()   { printf '%s' "${MP_NOW:-$(date +%s)}"; }
+mp_epoch() { perl -MTime::Local -e '@p=split /-/,$ARGV[0]; print timegm(0,0,12,$p[2],$p[1]-1,$p[0])' "$1" 2>/dev/null; }
+mp_days_between() { local a b; a=$(mp_epoch "$1"); b=$(mp_epoch "$2"); echo $(( (${b:-0} - ${a:-0}) / 86400 )); }
+mp_date_ago() { perl -MPOSIX -e 'print strftime("%F", localtime(time - 86400*$ARGV[0]))' "$1"; }
+mp_mtime() { perl -e 'print((stat($ARGV[0]))[9])' "$1" 2>/dev/null; }
+mp_mode()  { perl -e 'printf "%o", (stat($ARGV[0]))[2] & 07777' "$1" 2>/dev/null; }
+
+# Secret scrubbing (applied to model input and output, and to logged error text)
+mp_scrub() {
+  perl -pe '
+    s/(sk-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|xox[baprs]-[A-Za-z0-9-]{10,})/[SECRET]/g;
+    s/((?:password|passwd|token|secret|api[_-]?key)["\x27 ]*[:=][ "\x27]*)[^ "\x27,;]+/$1\[SECRET]/gi;
+    s/[A-Za-z0-9+\/_-]{40,}/[LONG-STRING]/g;
+  '
+}
+
+mp_log() { printf '%s %s\n' "$(date '+%F %T')" "$*" >&2; }
+
+# ---- PID lock that survives crashes and PID reuse ----
+# File content: "<pid> <process start time>". A lock is stale when the process is gone, or when the
+# same PID now belongs to a process that started at a different time. Where `ps -o lstart=` does not
+# work (Git Bash), the start time is empty and the lock also expires after LOCK_MAX_AGE seconds.
+mp_proc_start() { LC_ALL=C ps -o lstart= -p "$1" 2>/dev/null | tr -s ' ' | sed -e 's/^ //' -e 's/ $//'; }
+mp_pid_alive() {   # $1 pid, $2 recorded start time (may be empty)
+  [ -n "$1" ] || return 1
+  kill -0 "$1" 2>/dev/null || ps -p "$1" >/dev/null 2>&1 || return 1
+  local cur; cur=$(mp_proc_start "$1")
+  [ -z "$2" ] || [ -z "$cur" ] || [ "$cur" = "$2" ]
+}
+mp_lock_acquire() {   # $1 lock file; 0 = got it, 1 = held by a live process
+  local f="$1" i pid st age
+  for i in 1 2 3; do
+    if ( set -C; printf '%s %s\n' "$$" "$(mp_proc_start "$$")" >"$f" ) 2>/dev/null; then return 0; fi
+    pid=""; st=""; IFS=' ' read -r pid st <"$f" 2>/dev/null
+    if mp_pid_alive "$pid" "$st"; then
+      if [ -z "$st" ]; then   # start time unverifiable: do not trust an old lock
+        age=$(( $(mp_now) - $(mp_mtime "$f") ))
+        [ "$age" -gt "${LOCK_MAX_AGE:-7200}" ] || return 1
+      else
+        return 1
+      fi
+    fi
+    mp_log "stale lock $(basename "$f") (pid ${pid:-?} gone or reused), taking over"
+    rm -f "$f"
+  done
+  return 1
+}
+mp_lock_release() {   # only the owner removes it
+  local pid=""; IFS=' ' read -r pid _ <"$1" 2>/dev/null
+  [ "$pid" = "$$" ] && rm -f "$1"; return 0
+}
+mp_lock_wait() {   # $1 lock file, $2 max seconds: wait for a live holder
+  local n=0; until mp_lock_acquire "$1"; do n=$((n+1)); [ "$n" -gt "${2:-300}" ] && return 1; sleep 1; done
+}
+
+# ---- model calls with retries ----
+# Permanent failures (login/auth/missing CLI) are never retried.
+mp_permanent_error() {
+  printf '%s' "$1" | grep -Eiq 'authenticat|unauthori[sz]ed|\b401\b|\b403\b|invalid.{0,20}(token|api key)|oauth|not logged in|please log ?in|/login|credit balance|permission denied|command not found|no such file or directory|unknown option|unrecognized (option|arguments)'
+}
+# mp_llm_run <agent> <prompt>: answer on stdout; return 0 = non-empty answer, 1 = failed.
+# Retries use the waits in $RETRY_WAIT (seconds, space separated; tests set "0 0").
+mp_llm_run() {
+  local agent="$1" prompt="$2" out err rc i=0 waits w n
+  out=$(mktemp); err=$(mktemp)
+  # shellcheck disable=SC2086
+  set -- $RETRY_WAIT; waits=("$@"); n=${#waits[@]}
+  while :; do
+    ( mp_adapter "$agent" && printf '%s' "$prompt" | mp_agent_llm ) >"$out" 2>"$err"; rc=$?
+    if [ "$rc" = 0 ] && [ -s "$out" ]; then cat "$out"; rm -f "$out" "$err"; return 0; fi
+    mp_log "model call by '$agent' failed (rc=$rc): $(head -c 300 "$err" | mp_scrub | tr '\n' ' ')"
+    if [ "$rc" = 127 ] || mp_permanent_error "$(head -c 4000 "$out" "$err" 2>/dev/null)"; then
+      mp_log "ERROR: permanent-looking failure (auth/setup), not retrying"; rm -f "$out" "$err"; return 1
+    fi
+    if [ "$i" -ge "$n" ]; then mp_log "ERROR: model call failed after $((i + 1)) attempts"; rm -f "$out" "$err"; return 1; fi
+    w=${waits[$i]}; i=$((i + 1))
+    mp_log "transient failure, retry $i/$n in ${w}s"
+    sleep "$w"
+  done
+}
+
 # Run a command detached from the agent so it never delays exit.
 mp_detach() {
   mkdir -p "$STATE"
@@ -93,6 +191,30 @@ mp_adapter() {
 # The summary goes to the vault that owns <cwd> (default vault otherwise).
 mp_summarize_bg() {
   mp_detach bash "$MP_HOME/core/summarize.sh" "$1" "$2" "$3" "$4" "${5:-end}"
+}
+
+# Start the background maintainer for a vault (no-op when off or unsupported).
+mp_maintain_bg() {  # $1 vault name, extra args passed on (e.g. --if-pending)
+  [ "$MAINTAIN" = on ] && [ -n "$MAINTAIN_AGENT" ] || return 0
+  local n="$1"; shift
+  mp_detach bash "$MP_HOME/core/maintain.sh" "$n" "$@"
+}
+
+# Session-start recovery, fully in the background: unsummarized sessions (the safety net below)
+# and maintenance that is still pending. Returns immediately and prints nothing.
+mp_recover_start() {  # $1 agent, $2 current session id
+  [ "$RECOVER" = on ] || return 0
+  [ -n "$MINDPALACE_DOCTOR" ] && return 0
+  mp_detach bash "$MP_HOME/core/recover.sh" "$1" "${2:-}"
+}
+
+# At most one line for the session start: ERROR lines of the last 7 days in the hook log.
+mp_health_line() {
+  [ -f "$STATE/hook.log" ] || return 0
+  local since n; since=$(mp_date_ago 7)
+  n=$(awk -v s="$since" '$1 >= s && /ERROR/' "$STATE/hook.log" 2>/dev/null | wc -l | tr -d ' ')
+  [ "${n:-0}" -gt 0 ] && printf 'MindPalace health: %s error line(s) in the last 7 days in %s. Mention it to the user once.\n' "$n" "$STATE/hook.log"
+  return 0
 }
 
 # Safety net: summarize this agent's recent sessions that never got a session-end

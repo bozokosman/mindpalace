@@ -5,6 +5,8 @@ D="$(cd "$(dirname "$0")/../../.." && pwd)"
 source "$D/core/common.sh"; source "$D/core/memory.sh"; mp_adapter claude
 input=$(cat)
 cwd=$(mp_path "$(jq -r '.cwd // empty' <<<"$input")"); [ -z "$cwd" ] && cwd="$PWD"
-mp_catchup claude "$(jq -r '.session_id // empty' <<<"$input")" >/dev/null 2>&1
-mp_memory "$cwd"
+sid=$(jq -r '.session_id // empty' <<<"$input")
+mp_recover_start claude "$sid"
+mem=$(mp_memory "$cwd")
+[ -n "$mem" ] && { printf '%s\n' "$mem"; mp_health_line; }
 exit 0

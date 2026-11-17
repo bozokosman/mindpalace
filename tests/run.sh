@@ -52,6 +52,7 @@ bash "$ROOT/install.sh" --yes >/dev/null 2>&1
 t "rerun: no duplicate hooks"  "[ \$(jq '[.hooks[][].hooks[].command | select(test(\"mindpalace\"))] | length' '$T/.claude/settings.json') = 4 ] && [ \$(jq '[.hooks[][].hooks[].command] | length' '$T/.codex/hooks.json') = 4 ]"
 t "rerun: one rules block"     "[ \$(grep -c 'mindpalace:start' '$T/.claude/CLAUDE.md') = 1 ]"
 
+sed -i.bak "s|^RETRY_WAIT=.*|RETRY_WAIT=\"0 0\"|" "$H/mindpalace.conf"
 echo "transcript parsing (normalized messages)"
 for a in claude codex gemini; do
   f="$FX/$a.jsonl"; [ "$a" = gemini ] && f="$FX/gemini.json"
@@ -101,6 +102,86 @@ MP_HOME="$H" bash "$H/core/summarize.sh" claude "$T/code/app" "$FX/claude.jsonl"
 t "re-run: nothing new, one csv row" "[ \$(grep -c 's-claude' '$V/journal/time.csv') = 1 ]"
 MP_HOME="$H" bash "$H/core/summarize.sh" codex "$T/code/xproj" "$FX/codex.jsonl" s-cross end >/dev/null 2>&1   # SUMMARY_AGENT is gemini now
 t "cross-tool: codex session summarized by gemini" "grep -qF '[xproj] Stripe checkout (gemini) (codex)' '$V/journal/'\$(date +%F).md"
+
+echo "resilience: retries"
+cat > "$T/bin/claude-flaky" <<'X'
+#!/bin/bash
+cat >/dev/null
+n=$(cat "$FLAKY_DIR/count" 2>/dev/null || echo 0); echo $((n+1)) >"$FLAKY_DIR/count"
+if [ "$n" -lt "$FLAKY_FAILS" ]; then echo "${FLAKY_MSG:-529 overloaded_error}" >&2; exit 1; fi
+printf 'TITLE: Flaky ok\n- Done: it worked\n'
+X
+chmod +x "$T/bin/claude-flaky"
+mkdir -p "$T/flaky"
+rl() { # run mp_llm_run with the flaky CLI as claude's model call; echo "rc|attempts"
+  rm -f "$T/flaky/count"
+  out=$(FLAKY_DIR="$T/flaky" FLAKY_FAILS="$1" FLAKY_MSG="${2:-}" MP_HOME="$H" TEST_RW="${3-0 0}" bash -c '
+    source "$MP_HOME/core/common.sh"; RETRY_WAIT="$TEST_RW"
+    mp_agent_llm() { claude-flaky; }
+    mp_adapter() { :; }
+    mp_llm_run claude "prompt" >/dev/null 2>&1; echo "$?"' )
+  echo "$out|$(cat "$T/flaky/count" 2>/dev/null || echo 0)"
+}
+t "transient error: 2 failures then success"  "[ \"\$(rl 2)\" = '0|3' ]"
+t "transient error: gives up after 2 retries" "[ \"\$(rl 5)\" = '1|3' ]"
+t "no retries when RETRY_WAIT is empty"       "[ \"\$(rl 1 '' '')\" = '1|1' ]"
+for m in "401 Unauthorized" "Error: 403 forbidden" "Not logged in. Run /login" "authentication_error" "claude: command not found"; do
+  t "permanent error not retried: $m"          "[ \"\$(rl 5 '$m')\" = '1|1' ]"
+done
+
+echo "resilience: lock"
+LK="$T/lock.pid"; rm -f "$LK"
+lk() { MP_HOME="$H" bash -c 'source "$MP_HOME/core/common.sh"; '"$1" _ "$LK"; }
+sleep 300 & LIVE=$!
+( sleep 0 ) & DEAD=$!; wait $DEAD 2>/dev/null
+LIVE_START=$(MP_HOME="$H" bash -c 'source "$MP_HOME/core/common.sh"; mp_proc_start '"$LIVE")
+t "free lock is acquired"                     "lk 'mp_lock_acquire \"\$1\"' && grep -q . '$LK'"
+t "lock held by a live process is respected"  "printf '%s %s\n' $LIVE '$LIVE_START' >'$LK'; ! lk 'mp_lock_acquire \"\$1\"'"
+t "stale lock (dead PID) is taken over"       "printf '%s %s\n' $DEAD 'Mon Jan  1 00:00:00 2024' >'$LK'; lk 'mp_lock_acquire \"\$1\"'"
+if [ -n "$LIVE_START" ]; then
+  t "PID reuse: live PID, other start time = stale" "printf '%s %s\n' $LIVE 'Mon Jan  1 00:00:00 2001' >'$LK'; lk 'mp_lock_acquire \"\$1\"'"
+else echo "  - skipped: PID reuse check (ps -o lstart= unavailable on this platform; falls back to lock age)"; fi
+t "only the owner releases"                   "printf '%s x\n' $LIVE >'$LK'; lk 'mp_lock_release \"\$1\"'; [ -f '$LK' ]"
+t "an unverifiable old lock expires"          "printf '%s\n' $LIVE >'$LK'; perl -e 'utime(1,1,\$ARGV[0])' '$LK'; lk 'mp_lock_acquire \"\$1\"'"
+kill $LIVE 2>/dev/null; rm -f "$LK"
+
+echo "resilience: summarize with retries and empty retry"
+cat > "$T/bin/claude-seq" <<'X'
+#!/bin/bash
+cat >/dev/null
+n=$(cat "$FLAKY_DIR/count" 2>/dev/null || echo 0); echo $((n+1)) >"$FLAKY_DIR/count"
+if [ "$n" -lt 1 ]; then echo EMPTY; else printf 'TITLE: Second try\n- Done: x\n'; fi
+X
+chmod +x "$T/bin/claude-seq"
+sed -i.bak "s|^SUMMARY_AGENT=.*|SUMMARY_AGENT=\"claude\"|; s|^RETRY_WAIT=.*|RETRY_WAIT=\"0 0\"|" "$H/mindpalace.conf"
+mkdir -p "$T/seq"; rm -f "$T/seq/count"
+cp "$T/bin/claude" "$T/bin/claude.orig"
+cp "$T/bin/claude-seq" "$T/bin/claude"
+sed -i.bak "s|^EMPTY_RETRY_MIN_CHARS=.*|EMPTY_RETRY_MIN_CHARS=10|" "$H/mindpalace.conf"
+FLAKY_DIR="$T/seq" MP_HOME="$H" bash "$H/core/summarize.sh" claude "$T/code/app" "$FX/claude.jsonl" s-empty end >/dev/null 2>&1
+t "EMPTY on a long conversation: one more try" "[ \"\$(cat '$T/seq/count')\" = 2 ] && grep -q 'Second try' '$V/journal/'\$(date +%F).md"
+rm -f "$T/seq/count"
+sed -i.bak "s|^EMPTY_RETRY_MIN_CHARS=.*|EMPTY_RETRY_MIN_CHARS=999999|" "$H/mindpalace.conf"
+FLAKY_DIR="$T/seq" MP_HOME="$H" bash "$H/core/summarize.sh" claude "$T/code/app" "$FX/claude.jsonl" s-empty2 end >/dev/null 2>&1
+t "EMPTY on a short conversation: no retry"    "[ \"\$(cat '$T/seq/count')\" = 1 ]"
+cp "$T/bin/claude.orig" "$T/bin/claude"; rm -f "$T/bin/claude.orig"
+
+echo "resilience: recovery at session start (background)"
+hr() { perl -MTime::HiRes=time -e 'printf "%.3f", time'; }
+mkdir -p "$T/.claude/projects/p1"
+cp "$FX/claude.jsonl" "$T/.claude/projects/p1/lost1.jsonl"
+perl -e 'my $o=time-3600; utime($o,$o,$ARGV[0])' "$T/.claude/projects/p1/lost1.jsonl"
+perl -e 'my $o=time-86400; utime($o,$o,$ARGV[0])' "$H/state/.installed"
+sed -i.bak "s|^SUMMARY_AGENT=.*|SUMMARY_AGENT=\"claude\"|" "$H/mindpalace.conf"
+t0=$(hr)
+rec_out=$(echo "{\"cwd\":\"$V\",\"session_id\":\"cur\"}" | bash "$H/adapters/claude/hooks/session-start.sh")
+t1=$(hr)
+t "session start returns fast with recovery on" "perl -e 'exit(($t1 - $t0) < 1.0 ? 0 : 1)'"
+t "recovery adds at most 1 line to stdout"      "[ \$(printf '%s\n' \"\$rec_out\" | grep -c '^MindPalace health') -le 1 ]"
+for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do grep -qF '[x]' "$V/journal/$(date +%F).md" 2>/dev/null && break; sleep 0.5; done
+t "unsummarized session recovered in background" "grep -q '\[x\] Stripe checkout' '$V/journal/'\$(date +%F).md"
+t "recovery does nothing when RECOVER=off"       "sed -i.bak 's|^RECOVER=.*|RECOVER=\"off\"|' '$H/mindpalace.conf'; MP_HOME='$H' bash -c 'source \"\$MP_HOME/core/common.sh\"; mp_recover_start claude x; echo done' | grep -qx done; sed -i.bak 's|^RECOVER=.*|RECOVER=\"on\"|' '$H/mindpalace.conf'"
+rm -rf "$T/.claude/projects/p1"
 
 echo "rules-only tools (zed, qwen)"
 mkdir -p "$T/.qwen"; echo "# my qwen notes" > "$T/.qwen/QWEN.md"

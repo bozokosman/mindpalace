@@ -28,5 +28,5 @@ mp_agent_recent_sessions() { find "$GEMINI_DIR/tmp" -path '*chats*' -name 'sessi
 # Summarizer: piped stdin is appended to the -p prompt. Read-only approval mode, plain text out.
 mp_agent_llm() {
   mp_timeout 240 gemini -p "Follow the instructions in the text below exactly. Do not use any tools." \
-    -m "${GEMINI_SUMMARY_MODEL:-flash-lite}" -o text --approval-mode plan 2>/dev/null
+    -m "${GEMINI_SUMMARY_MODEL:-flash-lite}" -o text --approval-mode plan
 }

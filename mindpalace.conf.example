@@ -38,3 +38,9 @@ MIN_CONV_CHARS=400          # shorter sessions are not summarized
 
 # Working state (locks, offsets, log).
 STATE="${MP_STATE:-$HOME/.mindpalace/state}"
+
+# Resilience. A failed model call is retried on transient errors (never on login/auth errors).
+RETRY_WAIT="20 60"            # seconds to wait before each retry (two retries). Empty = no retries
+EMPTY_RETRY_MIN_CHARS=8000    # a long conversation that gets an empty answer is tried once more
+RECOVER="on"                  # at session start, recover unsummarized sessions and pending maintenance in the background
+OPEN_STALE_SEC=7200           # open-session record without a verifiable PID counts as dead after this idle time

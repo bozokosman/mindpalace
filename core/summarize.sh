@@ -17,13 +17,9 @@ log() { echo "$(date '+%F %T') [$agent:$sid:$mode] $*"; }
 today=$(date +%F)
 key="$agent-$sid"
 
-# One run per session at a time
-if command -v flock >/dev/null; then
-  exec 9>"$STATE/$key.lock"; flock 9
-else
-  until mkdir "$STATE/$key.lockdir" 2>/dev/null; do sleep 1; done
-  trap 'rmdir "$STATE/$key.lockdir"' EXIT
-fi
+# One run per session at a time (PID lock: a crashed run never blocks later ones)
+mp_lock_wait "$STATE/$key.pid" 300 || { log "ERROR: could not get the session lock, giving up"; exit 1; }
+trap 'mp_lock_release "$STATE/$key.pid"' EXIT
 
 mp_adapter "$agent" || exit 1
 msgs=$(mp_agent_messages "$tr" 2>/dev/null)
@@ -31,14 +27,7 @@ total=$(printf '%s' "$msgs" | grep -c . || true)
 ofs_file="$STATE/$key.offset"
 ofs=$(cat "$ofs_file" 2>/dev/null || echo 0)
 
-# Secret scrubbing (applied to model input and output)
-scrub() {
-  perl -pe '
-    s/(sk-[A-Za-z0-9_-]{16,}|ghp_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{30,}|xox[baprs]-[A-Za-z0-9-]{10,})/[SECRET]/g;
-    s/((?:password|passwd|token|secret|api[_-]?key)["\x27 ]*[:=][ "\x27]*)[^ "\x27,;]+/$1\[SECRET]/gi;
-    s/[A-Za-z0-9+\/_-]{40,}/[LONG-STRING]/g;
-  '
-}
+scrub() { mp_scrub; }
 
 conv=$(printf '%s\n' "$msgs" | tail -n +"$((ofs + 1))" | jq -r '
   select(.text != null and .text != "") |
@@ -55,6 +44,7 @@ if [ "$mode" = end ]; then
       "\($t[0] | localtime | strftime("%Y-%m-%dT%H:%M")) \(($s/60)|floor) \($t|length)" end')
 fi
 
+is_empty() { grep -qx 'EMPTY' <<<"$(echo "$1" | head -1 | tr -d '[:space:]*')"; }
 if [ "${#conv}" -lt "$MIN_CONV_CHARS" ]; then
   log "short conversation (${#conv} chars), summary skipped"
   summary="EMPTY"
@@ -79,8 +69,15 @@ Rules:
 TRANSCRIPT:
 $conv"
   summarizer="${SUMMARY_AGENT:-$agent}"
-  ( mp_adapter "$summarizer" && printf '%s' "$prompt" | mp_agent_llm ) >"$STATE/$key.out" 2>>"$STATE/hook.log"
-  summary=$(scrub <"$STATE/$key.out"); rm -f "$STATE/$key.out"
+  summary=$(mp_llm_run "$summarizer" "$prompt" | scrub)
+  if [ -n "$summary" ] && is_empty "$summary"; then
+    log "model said EMPTY (${#conv} chars)"
+    if [ "${#conv}" -ge "$EMPTY_RETRY_MIN_CHARS" ]; then
+      log "conversation is long, asking the model once more"
+      summary=$(mp_llm_run "$summarizer" "$prompt" | scrub)
+      if [ -n "$summary" ] && is_empty "$summary"; then log "EMPTY again (${#conv} chars), accepted"; fi
+    fi
+  fi
   if [ -z "$summary" ]; then
     log "ERROR: empty summary from '$summarizer' (model call failed?), offset not advanced"
     summary="EMPTY"; failed=1
@@ -89,7 +86,7 @@ $conv"
 fi
 
 title=""
-if ! grep -qx 'EMPTY' <<<"$(echo "$summary" | head -1 | tr -d '[:space:]*')"; then
+if ! is_empty "$summary"; then
   title=$(grep -m1 '^[*]*TITLE:' <<<"$summary" | sed -E 's/^[*]*TITLE:[*]*[[:space:]]*//')
   [ -z "$title" ] && title="(untitled)"
   notes=$(grep -E '^[-* ]*NOTE:' <<<"$summary" | sed -E 's/^[-* ]*NOTE:[[:space:]]*/- [ ] /')

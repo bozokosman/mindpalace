@@ -7,8 +7,9 @@ D="$(cd "$(dirname "$0")/../../.." && pwd)"
 source "$D/core/common.sh"; source "$D/core/memory.sh"; mp_adapter codex
 input=$(cat)
 cwd=$(mp_path "$(jq -r '.cwd // empty' <<<"$input")"); [ -z "$cwd" ] && cwd="$PWD"
-mp_catchup codex "$(jq -r '.session_id // empty' <<<"$input")" >/dev/null 2>&1
-mem=$(mp_memory "$cwd")
+mp_recover_start codex "$(jq -r '.session_id // empty' <<<"$input")"
+mem=$(mp_memory "$cwd"); [ -n "$mem" ] && mem="$mem
+$(mp_health_line)"
 [ -z "$mem" ] && exit 0
 ctx=$( { mp_body "$VAULT/RULES.md"; echo; printf '%s\n' "$mem"; } | head -c 9000)
 jq -n --arg m "$ctx" '{hookSpecificOutput:{hookEventName:"SessionStart",additionalContext:$m}}'

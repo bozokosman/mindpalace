@@ -11,7 +11,7 @@ FAIL=0
 echo "MindPalace doctor"
 for c in bash jq perl; do command -v "$c" >/dev/null && ok "$c found" || bad "$c missing"; done
 [ -f "$MP_HOME/VERSION" ] && ok "installed version $(cat "$MP_HOME/VERSION") in $MP_HOME" || { bad "not installed in $MP_HOME (run install.sh)"; exit 1; }
-for f in core/common.sh core/memory.sh core/guard-rules.sh core/summarize.sh; do [ -f "$MP_HOME/$f" ] || bad "missing $MP_HOME/$f"; done
+for f in core/common.sh core/memory.sh core/guard-rules.sh core/summarize.sh core/recover.sh; do [ -f "$MP_HOME/$f" ] || bad "missing $MP_HOME/$f"; done
 [ -f "$MP_HOME/mindpalace.conf" ] || { bad "config missing: $MP_HOME/mindpalace.conf"; exit 1; }
 # shellcheck source=/dev/null
 source "$MP_HOME/mindpalace.conf"; ok "config $MP_HOME/mindpalace.conf"
