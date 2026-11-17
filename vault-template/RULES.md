@@ -9,7 +9,7 @@ Loaded in every session of every connected AI tool (Claude Code, Codex, Gemini C
 - Show evidence before saying "done": a test, command output, or a re-read file.
 - If you are not sure, say so. Do not invent facts that are not in the vault; ask.
 - Hand work that needs many file reads to a subagent (a small model for reading, a stronger one for judgment). Only the summary comes back to the main context.
-- If the same mistake happens twice, write it to `{{VAULT}}/memory/mistakes.md` and suggest turning it into a rule.
+- When {{USER_NAME}} corrects you, or you repeat a mistake, count it in `{{VAULT}}/memory/mistakes.md` following the "How it works" section there (a second occurrence becomes a trial rule). Dates are checked by a script, not by you.
 - Passwords, API keys and `.env` contents are never written into any note. `{{VAULT}}/{{PRIVATE_DIR}}/` is never read.
 - Notes in the vault are never deleted; they move to `archive/`. A cancelled decision gets `status: cancelled` and links to the note that replaces it.
 - Ask before anything irreversible (delete, push, deploy, sending data outside).
@@ -26,3 +26,10 @@ Some tools load these rules but cannot run hooks. Then do the hooks' job yoursel
 - At the start of a session inside `{{VAULT}}`: read `memory/profile.md`, `memory/last-session.md`, `memory/open-items.md` and `INDEX.md`. Inside `{{PROJECTS}}/<name>`: read `{{VAULT}}/projects/<name>.md`.
 - Before the session ends (when the user says goodbye or the task is done): append a short entry to `{{VAULT}}/journal/YYYY-MM-DD.md` (`### HH:MM · [project] title`, then done / decisions / next step) and overwrite `memory/last-session.md` with it.
 - Ask before running `rm -r`, `git push --force`, `git reset --hard`, or anything touching `.env` or `{{PRIVATE_DIR}}/`.
+
+### Pending work and cut-off sessions (the job of the maintainer and the session-start hook)
+- At the start of a session, check for work that is still pending:
+  - Unchecked `- [ ]` lines in `{{VAULT}}/inbox/candidates-*.md`: sort them into the right notes (INDEX and grep first, update instead of duplicating), mark each `- [x] ... -> file`, and move a fully sorted file to `archive/`. Do this when it fits, or offer it to {{USER_NAME}}.
+  - `{{VAULT}}/memory/in-progress.md` with content: an earlier session was cut off. Tell {{USER_NAME}} what it says (last request, last state) and ask whether to continue. Do not continue without a yes. If yes, pick up from the file, the last journal entry and the project's recent changes.
+- While you work on something that takes more than a few minutes, keep `{{VAULT}}/memory/in-progress.md` current: date, the request, the state, the next step (a few lines). When the work is finished or you write the journal entry, empty the file (leave it in place).
+- Commit vault changes only locally if the vault is a git repository. Never push.

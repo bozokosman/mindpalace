@@ -194,4 +194,4 @@ Everything lives in `~/.mindpalace/mindpalace.conf` (see `mindpalace.conf.exampl
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) and [SECURITY.md](SECURITY.md). Changes are listed in [CHANGELOG.md](CHANGELOG.md). Released under the [MIT License](LICENSE).
 
-Created by Osman Bozok. MindPalace v1.1.0 · MIT License · Copyright (c) 2026 Osman Bozok.
+Created by Osman Bozok. MindPalace v1.2.0 · MIT License · Copyright (c) 2026 Osman Bozok.

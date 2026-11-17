@@ -433,6 +433,12 @@ t "every shell script passes bash -n"         "for f in \$(cd '$ROOT' && git ls-
 if command -v shellcheck >/dev/null; then t "shellcheck (errors only)" "shellcheck -S error -x \$(cd '$ROOT' && git ls-files '*.sh' 2>/dev/null)"; else echo "  - skipped: shellcheck not installed"; fi
 t "no personal data in the repo"              "[ -z \"\$(grep -rIniE 'podgorica|vigrad|/home/[a-z]|@proton|@gmail|osman' --exclude-dir=.git --exclude=run.sh '$ROOT' | grep -v -e bozokosman -e 'Osman Bozok')\" ]"
 
+echo "release metadata"
+t "VERSION is 1.2.0 and CHANGELOG has the entry" "[ \"\$(tr -d '[:space:]' <'$ROOT/VERSION')\" = 1.2.0 ] && grep -q '^## 1.2.0 ' '$ROOT/CHANGELOG.md' && grep -q 'v1.2.0' '$ROOT/README.md'"
+t "installed version matches the package"      "[ \"\$(cat '$H/VERSION')\" = \"\$(cat '$ROOT/VERSION')\" ]"
+t "RULES.md: no-hooks section checks pending work" "grep -q 'in-progress.md' '$V/RULES.md' && grep -q 'candidates-' '$V/RULES.md' && grep -q 'Do not continue without a yes' '$V/RULES.md'"
+t "AGENT_INSTALL: plan first, no implied consent" "grep -q 'install.sh --plan' '$ROOT/AGENT_INSTALL.md' && grep -q 'not permission to change anything' '$ROOT/AGENT_INSTALL.md' && grep -q 'Never install system packages' '$ROOT/AGENT_INSTALL.md'"
+
 echo "rules-only tools (zed, qwen)"
 mkdir -p "$T/.qwen"; echo "# my qwen notes" > "$T/.qwen/QWEN.md"
 bash "$ROOT/install.sh" --yes --agents claude,codex,gemini,zed,qwen >/dev/null 2>&1

@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.2.0 — 2026-11-17
+Resilience, an optional maintainer, cut-off session detection, and a public GitHub release flow.
+- **Retries:** model calls retry twice on temporary errors (waits in `RETRY_WAIT`), never on login/auth/missing-CLI errors; a long conversation answered with EMPTY is tried once more (`EMPTY_RETRY_MIN_CHARS`)
+- **Locks:** PID locks that record the process start time (`ps -o lstart=`), so stale locks are taken over and reused PIDs are not mistaken for live ones; no `/proc`; falls back to lock age where `ps` cannot report start times (Git Bash)
+- **Recovery:** at session start, unsummarized recent sessions and pending maintenance are recovered in a detached background process; the hook prints at most one health line
+- **Maintainer (optional, `MAINTAIN=on|off`):** `core/maintain.sh` sorts inbox candidates, updates `SUMMARY.md` and `agent/notes.md`, archives sorted inbox files and commits locally when `AUTO_COMMIT=on` (never pushes). Supported where the tool has a safe file-edit mode (Claude Code); Codex and Gemini are unsupported and the feature stays off for them
+- **Lessons cycle:** `core/lessons.sh` applies the date rules deterministically: count 2 = trial, 30 days without a repeat = rule, 90 days = retired into `archive/mistakes-retired.md`, cap of 15 active rules
+- **Cut-off sessions:** every folder; open-session records are written at session start and deleted at a real session end (compaction keeps them); the next start in the same folder shows a one-time warning (last request, last state, transcript, digest command) and the assistant must ask before continuing. `core/session-digest.sh` makes the digest with bash and jq. Rules-only tools get the same through `RULES.md` and `memory/in-progress.md`
+- **Claude Code:** `CLAUDE_OAUTH_TOKEN_FILE` for unattended runs; whitespace stripped, value never logged (redacted from stderr), `doctor.sh` checks mode 600
+- **Install experience:** new README with a one-prompt install, release zip + sha256 instructions, FAQ; `AGENT_INSTALL.md` rewritten (agent detects system and tools, never installs system packages, `--plan` before install, explicit approval at every checkpoint, doctor + version check + memory proof); the repository address lives in `REPO` (`scripts/set-repo.sh` changes it everywhere); `--no-maintainer`
+- **GitHub:** MIT license, CI on Linux, macOS and Windows (Git Bash), draft release workflow with zip and checksum, issue/PR templates, `CONTRIBUTING.md`, `SECURITY.md`, `.gitattributes`
+- **Fixes:** new vaults now really get their local git repo (the loop skipped the last vault when the list had no trailing newline); Codex injects the rules of the vault that owns the folder
+- Test suite: 195 offline checks (was 93)
+
 ## 1.1.0 — 2026-11-02
 Works with more than Claude Code. Everything is tool-neutral now.
 - Agent-agnostic `core/` plus per-tool `adapters/`; installs to `~/.mindpalace`
