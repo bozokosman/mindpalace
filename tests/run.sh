@@ -413,6 +413,13 @@ t "maintainer also gets the token"           "grep -q 'mp_claude_run mp_timeout'
 sed -i.bak "s|^CLAUDE_OAUTH_TOKEN_FILE=.*|CLAUDE_OAUTH_TOKEN_FILE=\"\"|" "$H/mindpalace.conf"
 cp "$T/bin/claude.keep" "$T/bin/claude"; rm -f "$T/bin/claude.keep"; rm -f "$H/state/hook.log"
 
+echo "repository address"
+cp -R "$ROOT" "$T/repo-copy" 2>/dev/null; rm -rf "$T/repo-copy/.git"
+SLUG=$(tr -d "[:space:]" <"$ROOT/REPO")
+t "README prompt points at the raw AGENT_INSTALL.md" "grep -qF \"https://raw.githubusercontent.com/$SLUG/main/AGENT_INSTALL.md\" '$ROOT/README.md'"
+t "set-repo.sh rewrites every occurrence"           "bash '$T/repo-copy/scripts/set-repo.sh' someone/other-name >/dev/null && ! grep -rqF --exclude-dir=.git 'bozokosman/mindpalace' '$T/repo-copy' && grep -q 'raw.githubusercontent.com/someone/other-name/main' '$T/repo-copy/README.md' && [ \"\$(cat '$T/repo-copy/REPO')\" = someone/other-name ]"
+rm -rf "$T/repo-copy"
+
 echo "rules-only tools (zed, qwen)"
 mkdir -p "$T/.qwen"; echo "# my qwen notes" > "$T/.qwen/QWEN.md"
 bash "$ROOT/install.sh" --yes --agents claude,codex,gemini,zed,qwen >/dev/null 2>&1

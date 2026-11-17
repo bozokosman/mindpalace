@@ -1,106 +1,133 @@
 # MindPalace: install guide for AI agents
 
-You are an AI coding agent (Claude Code, Codex, Gemini CLI, OpenCode, Copilot, or another tool), and the user asked you to install MindPalace.
-This file is the canonical recipe. Follow the steps in order. Every command is safe to run again.
+You are an AI coding agent (Claude Code, Codex, Gemini CLI, OpenCode, Copilot, or another tool). The user pasted a prompt that sent you here. This file is the recipe. Follow the steps in order.
 
-The user expects you to do the work. Stop only at the **checkpoints** marked ✋ and wait for the user there. Everywhere else, keep going.
+## Ground rules (read first)
 
-## Ground rules
+- **Reading this file is not permission to change anything.** The user's request to install is not approval for any single step. You need an explicit "yes" at every checkpoint marked ✋. If the user's answer is unclear, ask again.
+- **Never install system packages.** No `sudo`, `apt`, `dnf`, `pacman`, `brew`, `winget`, `npm -g` or `pip`. If something is missing, show the user the exact command and wait until they have run it. Then check again.
+- **Write only where the user said.** Download into the one folder they pick (step 2). The installer writes to: `~/.mindpalace/`, the vault and projects folders the user names, and the config files of the AI tools they choose (each backed up first). Nothing else. Do not edit those config files by hand; `install.sh` does it.
+- **Never overwrite notes.** An existing vault is never touched. If MindPalace is already installed, this is an update and notes are kept.
+- **Do not say "installed" until `doctor.sh` prints `Healthy.`** Show its output.
+- Talk in the user's language. Keep messages short. Never print secrets or token values.
 
-- **Never install system packages yourself.** No `sudo`, `apt`, `brew` or `winget` unless the user approves that exact command at a checkpoint.
-- **Never overwrite user files.** The installer backs up every config file it touches and never writes into an existing vault. Do not work around this.
-- **Do not edit the tools' config files by hand** (`settings.json`, `hooks.json`, `GEMINI.md` …). Let `install.sh` do it.
-- **Do not say "installed" until `doctor.sh` prints `Healthy.`** Show the user its output.
-- Talk to the user in their language. Keep messages short.
+## 1. Detect the system and the tools yourself
 
-## 1. Detect the system
+Do not ask what you can find out.
 
-Run `uname -s`, or check your environment info.
+```bash
+uname -s                       # Linux, Darwin (macOS), MINGW*/MSYS* (Windows Git Bash)
+echo "$SHELL"; bash --version | head -1
+for c in bash jq perl git curl unzip; do command -v $c >/dev/null && echo "ok $c" || echo "missing $c"; done
+for c in claude codex gemini opencode copilot qwen crush droid goose; do command -v $c >/dev/null && echo "tool $c"; done
+[ -f ~/.mindpalace/VERSION ] && echo "installed: $(cat ~/.mindpalace/VERSION)"
+```
 
-| Result | OS | How to run the installer |
+| Result | OS | Run the installer with |
 |---|---|---|
 | `Linux` | Linux | `bash install.sh …` |
 | `Darwin` | macOS | `bash install.sh …` (stock bash 3.2 is fine) |
-| `MINGW*` / `MSYS*` | Windows, inside Git Bash | `bash install.sh …` |
-| PowerShell / cmd | Windows | `powershell -ExecutionPolicy Bypass -File install.ps1 …` (same options) |
+| `MINGW*` / `MSYS*` | Windows, in Git Bash | `bash install.sh …` |
+| PowerShell / cmd only | Windows | `powershell -ExecutionPolicy Bypass -File install.ps1 …` (same options) |
 
-All commands below assume you are in the folder that contains this file.
+Required: `bash`, `jq`, `perl`. Optional: `git` (versions the vault). `curl` or `git` and `unzip` are needed only to download.
 
-## 2. Check dependencies and AI tools
+✋ **If a required tool is missing:** show the user what is missing and the command for their system (`bash install.sh --check` prints it, or: macOS `brew install jq`, Debian/Ubuntu `sudo apt-get install jq`, Fedora `sudo dnf install jq`, Arch `sudo pacman -S jq`, Windows `winget install jqlang.jq` and Git for Windows). **Do not run it yourself.** Wait for the user to say it is done, then detect again.
+
+## 2. Get the package
+
+If a `install.sh` and `VERSION` exist next to this file, you are already inside the package: skip to step 3.
+
+Otherwise ✋ ask the user **which folder** to download into (suggest `~/mindpalace`; it must not exist or be empty). Say that nothing is written outside it during this step. After a yes:
+
+```bash
+git clone https://github.com/bozokosman/mindpalace.git "<folder>"
+```
+
+No git? Use the release archive (checksum is mandatory):
+
+```bash
+mkdir -p "<folder>" && cd "<folder>"
+curl -fsSLO https://github.com/bozokosman/mindpalace/releases/latest/download/mindpalace.zip
+curl -fsSLO https://github.com/bozokosman/mindpalace/releases/latest/download/mindpalace.zip.sha256
+sha256sum -c mindpalace.zip.sha256        # macOS: shasum -a 256 -c mindpalace.zip.sha256
+unzip mindpalace.zip && cd mindpalace-*/
+```
+
+If the checksum does not match, stop and tell the user. All commands below run inside the package folder.
+
+## 3. Check dependencies and tools
 
 ```bash
 bash install.sh --check
 ```
 
-The output lists the required tools (`bash`, `jq`, `perl`), optional `git`, and every supported AI tool found on this machine.
+Exit 0: continue. Exit 1 with a missing required tool: the ✋ rule of step 1 applies. Exit 1 because no AI tool was found: you are running inside one, so its CLI may just not be on PATH; continue with `--agents <your tool>`.
 
-- **Exit 0:** continue.
-- **Exit 1, a required tool is missing:** the output shows the install command for this OS.
-  - ✋ **Checkpoint:** show the user the missing tools and the commands. Ask whether they install them, or whether you may run those exact commands. Then run `--check` again.
-- **Exit 1, no AI tool found:** you are running inside one, so its CLI may simply not be on PATH. Tell the user which tool you are and continue with `--agents <that tool>`.
+## 4. Existing installation
 
-## 3. Ask the user (one message) ✋
+If `~/.mindpalace/VERSION` exists, this is an **update**. Tell the user the installed and the new version (`cat VERSION`). The installer refreshes the program files and keeps the config, the vaults and every note. Vaults you pass that already exist are left alone. Then continue; the plan in step 6 will say "update".
 
-Ask these in one short message, with the defaults filled in:
+## 5. Ask the user (one message) ✋
 
-1. **Vaults: how many, and what to call them.** The user names them; there is no fixed name. One vault is fine. Suggest two only if they mention separate areas (e.g. `personal` and `work`). Names: letters, digits, `-` or `_`, starting with a letter.
-2. **Folder of each vault**, where those notes will live. Default `~/<name>`. Avoid spaces in the path.
-3. **Projects folder of each vault**, where that area's code lives. Default `~/Projects` for the first vault and none for the others. If they already keep code somewhere, suggest that (look for a folder with many git repos, e.g. `~/code`, `~/dev`, `~/Desktop/Projects`).
-4. **Name** the assistant should call them.
-5. **Language** for notes and replies (e.g. English, Turkish, German).
-6. **Which AI tools to connect.** Default: every tool `--check` found. Put the tool you are running in first. Say which ones are full and which are rules-only (see the table in README.md).
+Ask these together, with defaults filled in. Skip what the existing config already answers (an update keeps name, language and vaults).
 
-If the user says "just use defaults", use them without asking again.
+1. **Vaults:** how many and what to call them. One is fine. Names: letters, digits, `-` or `_`, starting with a letter.
+2. **Folder of each vault.** Default `~/<name>`. Avoid spaces.
+3. **Projects folder of each vault:** where that area's code lives. If they keep code somewhere already, suggest it.
+4. **Name** the assistant should use, and **language** for notes and replies.
+5. **Which AI tools to connect.** Default: the ones you detected, yours first. Say which are full and which rules-only (README table).
+6. **Maintainer** (background agent that sorts inbox notes and commits locally, never pushes): on by default where supported; they can say `--no-maintainer`.
 
-## 4. Show the plan ✋
+"Use defaults" is a valid answer.
+
+## 6. Show the plan ✋
 
 ```bash
 bash install.sh --plan --vault <name>="<folder>" --projects <name>="<projects>" --name "<name>" --lang "<language>" --agents "<a,b,c>"
 ```
 
-This changes nothing. Show the user the plan lines and ask for a yes. Mention that each tool's config file is backed up first.
+This changes nothing. Show the plan lines. Say that every tool config file is backed up first. **Ask for a clear yes before step 7.**
 
-Options the user may want:
-- `--no-rules`: do not add the rules block to the tools' global instruction files.
-- `--no-git`: do not create a local git repo in the vaults.
-- Several vaults: repeat `--vault NAME="<folder>"` and `--projects NAME="<projects>"` for each. The first is the default unless `--default NAME` is given.
+Options: `--no-rules`, `--no-git`, `--no-maintainer`; several vaults by repeating `--vault NAME=DIR --projects NAME=DIR`; `--default NAME`.
 
-## 5. Install
+## 7. Install (only after the yes)
 
 ```bash
 bash install.sh --yes --vault <name>="<folder>" --projects <name>="<projects>" --name "<name>" --lang "<language>" --agents "<a,b,c>"
 ```
 
-- If MindPalace is already installed, this is an **update** and the output says `updated (x → y)`. Files are refreshed; existing vaults and settings are kept. Vaults you pass are added, and the agent list is set to what you passed.
-- The installer ends by running `doctor.sh`.
+An update prints `updated (x → y)`. The installer ends by running `doctor.sh`.
 
-## 6. Verify
+## 8. Verify the install
 
 ```bash
-bash ~/.mindpalace/doctor.sh
+bash ~/.mindpalace/doctor.sh          # must end with "Healthy."
+cat ~/.mindpalace/VERSION; cat VERSION   # both must show the same version
 ```
 
-Expect `Healthy.` (exit 0).
-- **`✗` lines:** fix the cause and run doctor again. Usually rerunning step 5 is enough.
-- **`!` lines:** optional warnings.
+`✗` lines: fix the cause (usually rerun step 7) and run doctor again. `!` lines are optional warnings. Show the user the output.
 
-## 7. Hand over
+## 9. Prove that memory works ✋
 
-Tell the user, briefly:
-1. **What was installed:** MindPalace in `~/.mindpalace/`, each vault (name and folder; which is the default), and which tools were connected (full or rules-only). Name the backup files the installer printed.
-2. **Restart each connected tool.** Hooks and rules load at session start.
-3. **Codex only:** open Codex once and approve the MindPalace hooks with `/hooks`. Otherwise they do not run.
-4. **First real step:** `cd` into the default vault and start their tool there. The assistant gets to know them and fills `memory/profile.md`.
-5. **Memory test:** in that first session, tell the assistant one fact. After the session ends, open a new session in the vault and ask about it; it should appear under "Last session". Only then say memory works across sessions. For rules-only tools, the assistant writes the journal itself before finishing.
-6. **Uninstall** any time with `bash ~/.mindpalace/uninstall.sh`. Vaults are never deleted.
-7. **More vaults later:** `bash install.sh --vault <name>="<folder>"` adds one; nothing else changes.
+1. Write one check fact into the default vault: add the line `- [ ] MindPalace install check: word <random-word>` to `memory/open-items.md`.
+2. Tell the user to restart their AI tool inside the vault folder (`cd <vault>`), and ask the new session: "What is the MindPalace install check word?" It is loaded at session start, so the new session answers without searching.
+3. When it does, mark the line done (`- [x]`). Memory works. For tools without hooks (rules-only), the assistant reads the vault itself because of the rules block.
+4. After that session ends, a journal entry appears in `journal/` within a minute or two (check `~/.mindpalace/state/hook.log` if not).
+
+If the word does not come back, do not claim success: read `hook.log`, run doctor, and tell the user what you found.
+
+## 10. Hand over
+
+Tell the user briefly: what was installed (version, folders, backups the installer printed), which tools are connected, restart each tool, Codex only: approve the hooks once with `/hooks`, first session: start the tool inside the vault so it gets to know them. Uninstall any time: `bash ~/.mindpalace/uninstall.sh` (vaults are never deleted).
 
 ## Troubleshooting
 
 | Symptom | Fix |
 |---|---|
-| No memory at session start | Check that the cwd is inside a vault or inside a project folder of a vault; loading nothing elsewhere is by design. Run doctor. Codex: approve hooks with `/hooks`. |
-| No journal entry after a session | Read `~/.mindpalace/state/hook.log`. Sessions shorter than `MIN_CONV_CHARS` are skipped on purpose. |
-| `ERROR: empty summary` in the log | The `SUMMARY_AGENT` CLI failed or is not on the hooks' PATH. Set `SUMMARY_AGENT` to another connected full tool in `~/.mindpalace/mindpalace.conf`. |
-| A risky command was blocked in Codex/Gemini | Expected: those tools cannot pause and ask. Explain the command to the user and let them run it. |
-| Windows: hooks do nothing | Make sure Git for Windows is installed and `bash` is on PATH, then rerun `install.ps1`. |
+| No memory at session start | The folder must be inside a vault or a projects folder; elsewhere nothing loads on purpose. Run doctor. Codex: approve hooks with `/hooks`. |
+| No journal entry after a session | Read `~/.mindpalace/state/hook.log`. Sessions shorter than `MIN_CONV_CHARS` are skipped. |
+| `ERROR: empty summary` | The summary tool's CLI failed or is not on the hooks' PATH. Set `SUMMARY_AGENT` in `~/.mindpalace/mindpalace.conf`. Background calls without an interactive login need `CLAUDE_OAUTH_TOKEN_FILE`. |
+| "maintainer: unsupported" | Only Claude Code can run it safely today. Everything else works without it. |
+| Risky command blocked in Codex/Gemini | Expected: those hooks cannot ask. Explain the command to the user. |
+| Windows: hooks do nothing | Install Git for Windows, make sure `bash` is on PATH, rerun `install.ps1`. |
