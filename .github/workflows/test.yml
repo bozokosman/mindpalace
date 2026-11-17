@@ -1,0 +1,45 @@
+name: test
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    name: tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    # The Windows job runs the suite in Git Bash. It is new and has had less field use, so it reports but does not block yet.
+    continue-on-error: ${{ matrix.os == 'windows-latest' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: |
+          command -v jq || { [ "$RUNNER_OS" = macOS ] && brew install jq; }
+          bash --version | head -1; jq --version; perl -v | sed -n 2p
+      - name: Syntax check
+        run: |
+          for f in $(git ls-files '*.sh'); do bash -n "$f" || exit 1; done
+      - name: Test suite
+        run: bash tests/run.sh
+
+  shellcheck:
+    name: shellcheck (warnings only)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: |
+          command -v shellcheck || { echo "shellcheck not installed"; exit 0; }
+          shellcheck -x -S warning $(git ls-files '*.sh') || true

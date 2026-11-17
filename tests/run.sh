@@ -420,6 +420,19 @@ t "README prompt points at the raw AGENT_INSTALL.md" "grep -qF \"https://raw.git
 t "set-repo.sh rewrites every occurrence"           "bash '$T/repo-copy/scripts/set-repo.sh' someone/other-name >/dev/null && ! grep -rqF --exclude-dir=.git 'bozokosman/mindpalace' '$T/repo-copy' && grep -q 'raw.githubusercontent.com/someone/other-name/main' '$T/repo-copy/README.md' && [ \"\$(cat '$T/repo-copy/REPO')\" = someone/other-name ]"
 rm -rf "$T/repo-copy"
 
+echo "github layout"
+t "test workflow: ubuntu, macos, windows"     "grep -q 'ubuntu-latest, macos-latest, windows-latest' '$ROOT/.github/workflows/test.yml' && grep -q 'bash tests/run.sh' '$ROOT/.github/workflows/test.yml'"
+t "release workflow: v* tag, draft, checksum" "grep -q \"tags: \['v\*'\]\" '$ROOT/.github/workflows/release.yml' && grep -q -- '--draft' '$ROOT/.github/workflows/release.yml' && grep -q sha256sum '$ROOT/.github/workflows/release.yml'"
+t "every action is version-pinned"            "! grep -hE 'uses: ' '$ROOT'/.github/workflows/*.yml | grep -vE '@v[0-9]+'"
+t "issue and PR templates exist"              "[ -f '$ROOT/.github/PULL_REQUEST_TEMPLATE.md' ] && [ -f '$ROOT/.github/ISSUE_TEMPLATE/bug_report.md' ]"
+t "LICENSE is MIT, README says so"            "head -1 '$ROOT/LICENSE' | grep -q 'MIT License' && grep -q 'Copyright (c) 2026 Osman Bozok' '$ROOT/LICENSE' && ! grep -qi 'all rights reserved' '$ROOT/README.md'"
+t "gitattributes: sh/md LF, ps1 CRLF"         "grep -q '^\*.sh text eol=lf' '$ROOT/.gitattributes' && grep -q '^\*.md text eol=lf' '$ROOT/.gitattributes' && grep -q '^\*.ps1 text eol=crlf' '$ROOT/.gitattributes'"
+t "no bash 4+ features in scripts"            "! grep -rnE 'declare -A|\\\$\{[A-Za-z_]+(,,|\^\^)\}|^[^#]*\b(mapfile|readarray)\b' '$ROOT/core' '$ROOT/lib' '$ROOT/adapters' '$ROOT/install.sh' '$ROOT/doctor.sh' '$ROOT/uninstall.sh' '$ROOT/scripts'"
+t "no GNU-only date/stat/readlink/sed -i"     "! grep -rnE 'date -d|stat -c|readlink -f|sed -i [^.]|/proc/' '$ROOT/core' '$ROOT/lib' '$ROOT/adapters' '$ROOT/install.sh' '$ROOT/doctor.sh' '$ROOT/uninstall.sh' '$ROOT/scripts'"
+t "every shell script passes bash -n"         "for f in \$(cd '$ROOT' && git ls-files '*.sh' 2>/dev/null || find . -name '*.sh'); do bash -n '$ROOT/'\$f || exit 1; done"
+if command -v shellcheck >/dev/null; then t "shellcheck (errors only)" "shellcheck -S error -x \$(cd '$ROOT' && git ls-files '*.sh' 2>/dev/null)"; else echo "  - skipped: shellcheck not installed"; fi
+t "no personal data in the repo"              "[ -z \"\$(grep -rIniE 'podgorica|vigrad|/home/[a-z]|@proton|@gmail|osman' --exclude-dir=.git --exclude=run.sh '$ROOT' | grep -v -e bozokosman -e 'Osman Bozok')\" ]"
+
 echo "rules-only tools (zed, qwen)"
 mkdir -p "$T/.qwen"; echo "# my qwen notes" > "$T/.qwen/QWEN.md"
 bash "$ROOT/install.sh" --yes --agents claude,codex,gemini,zed,qwen >/dev/null 2>&1

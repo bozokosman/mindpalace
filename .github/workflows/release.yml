@@ -1,0 +1,36 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tag must match VERSION
+        run: |
+          ver=$(tr -d '[:space:]' < VERSION)
+          [ "$GITHUB_REF_NAME" = "v$ver" ] || { echo "tag $GITHUB_REF_NAME does not match VERSION $ver"; exit 1; }
+          echo "VER=$ver" >> "$GITHUB_ENV"
+      - name: Tests
+        run: bash tests/run.sh
+      - name: Build zip and checksum
+        run: |
+          mkdir dist
+          git archive --format=zip --prefix="mindpalace-$VER/" -o dist/mindpalace.zip HEAD
+          cd dist && sha256sum mindpalace.zip > mindpalace.zip.sha256 && cat mindpalace.zip.sha256
+      - name: Release notes from CHANGELOG
+        run: |
+          awk -v v="$VER" '/^## /{ if (found) exit; found = index($0, v) } found' CHANGELOG.md > notes.md
+          [ -s notes.md ] || echo "Release $VER" > notes.md
+      - name: Draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/mindpalace.zip dist/mindpalace.zip.sha256 \
+            --draft --title "MindPalace $VER" --notes-file notes.md
