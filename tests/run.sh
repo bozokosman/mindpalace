@@ -39,7 +39,7 @@ t "install succeeds"           "bash '$ROOT/install.sh' --yes --vault brain='$V'
 t "doctor healthy"             "bash '$H/doctor.sh'"
 t "vault named by the user"    "head -1 '$V/AGENTS.md' | grep -qx '# brain'"
 t "config has vault section"   "grep -qx 'VAULTS=\"brain\"' '$H/mindpalace.conf' && grep -q '^VAULT_brain=' '$H/mindpalace.conf'"
-t "no placeholders left"       "! grep -rq '{{' '$V'"
+t "no placeholders left"       "! grep -rq --exclude-dir=.git '{{' '$V'"
 t "name with / and & kept"     "grep -q 'The user is A/B & C' '$V/RULES.md'"
 t "vault CLAUDE.md → AGENTS"   "grep -qx '@AGENTS.md' '$V/CLAUDE.md'"
 t "vault GEMINI.md → AGENTS"   "grep -qx '@./AGENTS.md' '$V/GEMINI.md'"
@@ -383,6 +383,35 @@ t0=$(hr); ss "$T/elsewhere/b" timing "$T/none.jsonl" >/dev/null; t1=$(hr)
 t "session start with bookkeeping is fast"  "perl -e 'exit(($t1 - $t0) < 1.0 ? 0 : 1)'"
 kill $LIVEPID 2>/dev/null; rm -rf "$OPEN"
 sed -i.bak 's|^RECOVER=.*|RECOVER="on"|' "$H/mindpalace.conf"
+
+echo "claude: long-lived token file"
+cp "$T/bin/claude" "$T/bin/claude.keep"
+cat >"$T/bin/claude" <<'X'
+#!/bin/bash
+cat >/dev/null
+printf '%s' "$CLAUDE_CODE_OAUTH_TOKEN" >"$TOKEN_SEEN"
+echo "request failed, token was $CLAUDE_CODE_OAUTH_TOKEN" >&2
+exit 1
+X
+chmod +x "$T/bin/claude"
+printf '  sk-ant-oat01-AbCdEf  \n\tGhIjKl123\r\n  \n' >"$T/tok"; chmod 600 "$T/tok"
+sed -i.bak "s|^CLAUDE_OAUTH_TOKEN_FILE=.*|CLAUDE_OAUTH_TOKEN_FILE=\"$T/tok\"|; s|^SUMMARY_AGENT=.*|SUMMARY_AGENT=\"claude\"|" "$H/mindpalace.conf"
+rm -f "$T/token-seen" "$H/state/hook.log"
+TOKEN_SEEN="$T/token-seen" MP_HOME="$H" bash "$H/core/summarize.sh" claude "$T/code/app" "$FX/claude.jsonl" s-token end >>"$H/state/hook.log" 2>&1
+t "token file: all whitespace removed"       "[ \"\$(cat '$T/token-seen')\" = 'sk-ant-oat01-AbCdEfGhIjKl123' ]"
+t "token value never reaches the log"        "[ -s '$H/state/hook.log' ] && ! grep -q 'AbCdEf' '$H/state/hook.log' && ! grep -q 'GhIjKl123' '$H/state/hook.log'"
+t "log still shows the failure (redacted)"   "grep -q 'token was .TOKEN.' '$H/state/hook.log'"
+t "doctor: mode 600 accepted"                "bash '$H/doctor.sh' | grep -q 'token file has mode 600'"
+if [ "$(uname -s | cut -c1-5)" = MINGW ]; then echo "  - skipped: token file mode check (no permission bits on Windows)"
+else
+  chmod 644 "$T/tok"
+  t "doctor: mode 644 rejected"              "out=\$(bash '$H/doctor.sh'); ! bash '$H/doctor.sh' >/dev/null && grep -q 'mode 644, must be 600' <<<\"\$out\""
+  t "doctor never prints the token"          "! bash '$H/doctor.sh' | grep -q 'AbCdEf'"
+  chmod 600 "$T/tok"
+fi
+t "maintainer also gets the token"           "grep -q 'mp_claude_run mp_timeout' '$H/adapters/claude/adapter.sh' && [ \$(grep -c 'mp_claude_run mp_timeout' '$H/adapters/claude/adapter.sh') = 2 ]"
+sed -i.bak "s|^CLAUDE_OAUTH_TOKEN_FILE=.*|CLAUDE_OAUTH_TOKEN_FILE=\"\"|" "$H/mindpalace.conf"
+cp "$T/bin/claude.keep" "$T/bin/claude"; rm -f "$T/bin/claude.keep"; rm -f "$H/state/hook.log"
 
 echo "rules-only tools (zed, qwen)"
 mkdir -p "$T/.qwen"; echo "# my qwen notes" > "$T/.qwen/QWEN.md"

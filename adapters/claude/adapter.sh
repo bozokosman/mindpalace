@@ -3,6 +3,25 @@
 # Transcript: ~/.claude/projects/<dir>/<session-id>.jsonl, one JSON event per line.
 CLAUDE_DIR="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
 
+# Long-lived login: CLAUDE_OAUTH_TOKEN_FILE (e.g. written by `claude setup-token`) lets background calls run
+# without an interactive login. All whitespace is stripped from the file content. The value is only put into
+# the child's environment: it is never printed, and any echo of it in the CLI's stderr is redacted.
+mp_claude_token_load() {
+  local f="${CLAUDE_OAUTH_TOKEN_FILE:-}" t
+  [ -n "$f" ] || return 0
+  f="${f/#\~/$HOME}"
+  [ -s "$f" ] || return 0
+  t=$(tr -d '[:space:]' <"$f" 2>/dev/null)
+  [ -n "$t" ] && export CLAUDE_CODE_OAUTH_TOKEN="$t"
+  return 0
+}
+mp_claude_run() {   # run a command with the token loaded; stderr is passed on with the token redacted
+  local ef rc; mp_claude_token_load; ef=$(mktemp)
+  "$@" 2>"$ef"; rc=$?
+  perl -pe 'BEGIN { $t = $ENV{CLAUDE_CODE_OAUTH_TOKEN} // "" } s/\Q$t\E/[TOKEN]/g if length $t' "$ef" >&2
+  rm -f "$ef"; return $rc
+}
+
 # Normalized messages: {"role","text","ts"} per line, main conversation only (no subagents, tool output, system notes)
 mp_agent_messages() {
   jq -c '
@@ -25,7 +44,7 @@ mp_agent_recent_sessions() {
 
 # Summarizer: prompt on stdin -> plain text on stdout. Small model, no tools, not saved as a session.
 mp_agent_llm() {
-  mp_timeout 180 claude -p --model "${CLAUDE_SUMMARY_MODEL:-haiku}" --effort "${CLAUDE_SUMMARY_EFFORT:-low}" \
+  mp_claude_run mp_timeout 180 claude -p --model "${CLAUDE_SUMMARY_MODEL:-haiku}" --effort "${CLAUDE_SUMMARY_EFFORT:-low}" \
     --tools "" --no-session-persistence
 }
 
@@ -33,7 +52,7 @@ mp_agent_llm() {
 # no Bash, edits limited to the working folder (acceptEdits), the private folder forbidden, nothing asked, nothing saved.
 mp_agent_edit() {
   local pd="${PRIVATE_DIR:-private}"
-  mp_timeout "${MAINTAIN_TIMEOUT:-600}" claude -p --model "${CLAUDE_MAINTAIN_MODEL:-haiku}" --effort low \
+  mp_claude_run mp_timeout "${MAINTAIN_TIMEOUT:-600}" claude -p --model "${CLAUDE_MAINTAIN_MODEL:-haiku}" --effort low \
     --tools "Read,Edit,Write,Glob,Grep" --permission-mode acceptEdits --permission-prompts none \
     --disallowedTools "Read(./$pd/**)" "Edit(./$pd/**)" --no-session-persistence
 }

@@ -65,5 +65,15 @@ adapter_doctor() {
   else
     bad "$A_SETTINGS missing or not valid JSON"
   fi
+  # Long-lived token file (optional): must exist and be readable by you only (mode 600). The value is never printed.
+  if [ -n "${CLAUDE_OAUTH_TOKEN_FILE:-}" ]; then
+    local tf="${CLAUDE_OAUTH_TOKEN_FILE/#\~/$HOME}" mode
+    if [ ! -s "$tf" ]; then warn "Claude Code: CLAUDE_OAUTH_TOKEN_FILE is set but the file is missing or empty: $tf"
+    elif [ "$OS" = windows ]; then ok "Claude Code: token file present (permission bits are not checked on Windows)"
+    else
+      mode=$(perl -e 'printf "%o", (stat($ARGV[0]))[2] & 07777' "$tf" 2>/dev/null)
+      [ "$mode" = 600 ] && ok "Claude Code: token file has mode 600" || bad "Claude Code: token file $tf has mode $mode, must be 600 (run: chmod 600 \"$tf\")"
+    fi
+  fi
   grep -qF '<!-- mindpalace:start -->' "$A_RULES_FILE" 2>/dev/null && ok "Claude Code rules imported" || warn "Claude Code rules not imported in $A_RULES_FILE (optional)"
 }

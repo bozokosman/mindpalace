@@ -56,3 +56,8 @@ MAINTAIN_TIMEOUT=600
 LESSON_TRIAL_DAYS=30          # trial rule that does not repeat this long becomes a rule
 LESSON_RETIRE_DAYS=90         # rule that does not repeat this long is archived
 LESSON_MAX_RULES=15           # active rules at most; the one unused longest is retired
+
+# Claude Code: file holding a long-lived token (from `claude setup-token`) so background summaries and the
+# maintainer work without an interactive login. Whitespace in the file is ignored. Keep it at mode 600
+# (chmod 600 FILE); doctor.sh checks this. The value is never logged.
+CLAUDE_OAUTH_TOKEN_FILE=""
