@@ -2,11 +2,10 @@
 # Claude Code SessionStart hook: stdout becomes context.
 [ -n "$MINDPALACE_HOOK" ] && exit 0
 D="$(cd "$(dirname "$0")/../../.." && pwd)"
-source "$D/core/common.sh"; source "$D/core/memory.sh"; mp_adapter claude
+source "$D/core/common.sh"; source "$D/core/sessions.sh"; mp_adapter claude
 input=$(cat)
 cwd=$(mp_path "$(jq -r '.cwd // empty' <<<"$input")"); [ -z "$cwd" ] && cwd="$PWD"
-sid=$(jq -r '.session_id // empty' <<<"$input")
-mp_recover_start claude "$sid"
-mem=$(mp_memory "$cwd")
-[ -n "$mem" ] && { printf '%s\n' "$mem"; mp_health_line; }
+tr=$(mp_path "$(jq -r '.transcript_path // empty' <<<"$input")")
+mp_session_context claude "$cwd" "$(jq -r '.session_id // empty' <<<"$input")" "$tr" "$(jq -r '.source // empty' <<<"$input")"
+mp_session_text
 exit 0

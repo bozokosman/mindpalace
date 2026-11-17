@@ -29,3 +29,6 @@ mp_agent_llm() {
 # Maintainer: UNSUPPORTED (no mp_agent_edit). `codex exec --sandbox workspace-write` could edit the vault, but it
 # also allows shell commands and reading every file, so the private folder cannot be kept off limits. The
 # maintainer therefore stays off when Codex is the only tool; another connected tool can run it.
+
+mp_agent_proc_regex() { echo '^(codex|node)$'; }
+mp_agent_resume_hint() { echo "codex resume (pick the session from the list)"; }

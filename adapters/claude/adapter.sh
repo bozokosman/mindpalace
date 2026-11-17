@@ -37,3 +37,7 @@ mp_agent_edit() {
     --tools "Read,Edit,Write,Glob,Grep" --permission-mode acceptEdits --permission-prompts none \
     --disallowedTools "Read(./$pd/**)" "Edit(./$pd/**)" --no-session-persistence
 }
+
+# Open-session tracking: process name of the tool (for the parent-process walk) and an optional resume footnote.
+mp_agent_proc_regex() { echo '^(claude|node|bun)$'; }
+mp_agent_resume_hint() { local s; s=$(basename "$1" .jsonl); echo "claude --resume $s"; }

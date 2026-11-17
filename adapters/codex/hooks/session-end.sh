@@ -7,6 +7,8 @@ input=$(cat)
 cwd=$(mp_path "$(jq -r '.cwd // empty' <<<"$input")")
 tr=$(mp_path "$(jq -r '.transcript_path // empty' <<<"$input")")
 sid=$(jq -r '.session_id // empty' <<<"$input")
+source "$D/core/sessions.sh"
+[ "${1:-end}" = end ] && mp_open_end codex "$sid"   # a real end clears the open-session record; compaction does not
 if [ ! -f "$tr" ] && [ -n "$sid" ]; then   # transcript_path can be null
   tr=$(find "${CODEX_HOME:-$HOME/.codex}/sessions" -name "rollout-*${sid}*.jsonl" 2>/dev/null | head -1)
 fi

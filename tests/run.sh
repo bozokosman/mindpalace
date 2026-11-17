@@ -296,6 +296,94 @@ t "more than the cap: unused longest is retired" "grep -q '^### b-second' '$LV/a
 sed -i.bak 's|^LESSON_MAX_RULES=.*|LESSON_MAX_RULES=15|' "$H/mindpalace.conf"
 t "dates work without GNU date"              "[ \"\$(MP_HOME='$H' bash -c 'source \"\$MP_HOME/core/common.sh\"; mp_days_between 2026-01-01 2026-03-01')\" = 59 ]"
 
+echo "unfinished sessions (all folders)"
+sed -i.bak 's|^RECOVER=.*|RECOVER="off"|' "$H/mindpalace.conf"
+OPEN="$H/state/open"; rm -rf "$OPEN"; mkdir -p "$T/elsewhere/a" "$T/elsewhere/b"
+cp "$FX/claude.jsonl" "$T/tr-dead.jsonl"
+ss() { printf '{"cwd":"%s","session_id":"%s","transcript_path":"%s","source":"%s"}' "$1" "$2" "${3:-}" "${4:-startup}" | bash "$H/adapters/claude/hooks/session-start.sh"; }
+rec() { # rec <file name> <cwd> <transcript> <pid> <pid start>
+  mkdir -p "$OPEN"; printf '%s\n%s\n%s\n%s\n%s\n' "$2" "$3" "$(date +%s)" "$4" "$5" >"$OPEN/$1"; }
+( sleep 0 ) & DEADPID=$!; wait $DEADPID 2>/dev/null
+sleep 300 & LIVEPID=$!; LIVEST=$(MP_HOME="$H" bash -c 'source "$MP_HOME/core/common.sh"; mp_proc_start '"$LIVEPID")
+
+t "start writes an open record"            "ss '$T/elsewhere/a' cur1 '$T/tr-new.jsonl' >/dev/null; [ -f '$OPEN/claude-cur1' ] && [ \"\$(sed -n 1p '$OPEN/claude-cur1')\" = '$T/elsewhere/a' ]"
+t "start outside vaults prints nothing"    "[ -z \"\$(ss '$T/elsewhere/a' cur1b '$T/tr-new.jsonl')\" ]"
+rm -f "$OPEN"/*
+rec claude-dead1 "$T/elsewhere/a" "$T/tr-dead.jsonl" "$DEADPID" "Mon Jan  1 00:00:00 2001"
+out=$(ss "$T/elsewhere/a" new1 "$T/tr-new.jsonl")
+t "dead record: warning block printed"     "grep -q '^## Unfinished session' <<<\"\$out\""
+t "warning: last request + last state"     "grep -q -- '- Last request: ' <<<\"\$out\" && grep -q -- '- Last state: ' <<<\"\$out\""
+t "warning: transcript path + digest command" "grep -qF '$T/tr-dead.jsonl' <<<\"\$out\" && grep -q 'core/session-digest.sh. claude' <<<\"\$out\""
+t "warning: asks the user, no silent resume" "grep -q 'Do not continue without their approval' <<<\"\$out\" && grep -q 'Shall I continue' <<<\"\$out\""
+t "warning: resume command only as footnote" "grep -q '^(Footnote.*claude --resume' <<<\"\$out\" && [ \$(grep -c 'claude --resume' <<<\"\$out\") = 1 ]"
+t "warning is short"                       "[ \${#out} -lt 2500 ]"
+t "warning is one-time (record consumed)"  "[ ! -f '$OPEN/claude-dead1' ] && [ -z \"\$(ss '$T/elsewhere/a' new2 '$T/tr-new.jsonl')\" ]"
+rm -f "$OPEN"/*
+rec claude-live1 "$T/elsewhere/a" "$T/tr-dead.jsonl" "$LIVEPID" "$LIVEST"
+t "live PID: parallel session, no warning" "[ -z \"\$(ss '$T/elsewhere/a' new3 '$T/tr-new.jsonl')\" ] && [ -f '$OPEN/claude-live1' ]"
+rm -f "$OPEN"/*
+rec claude-recycled "$T/elsewhere/a" "$T/tr-dead.jsonl" "$LIVEPID" "Mon Jan  1 00:00:00 2001"
+if [ -n "$LIVEST" ]; then t "PID reused by another process = dead" "grep -q Unfinished <<<\"\$(ss '$T/elsewhere/a' new3b '$T/tr-new.jsonl')\""
+else echo "  - skipped: PID reuse (ps -o lstart= unavailable here)"; fi
+rm -f "$OPEN"/*
+rec claude-dead2 "$T/elsewhere/a" "$T/tr-dead.jsonl" "$DEADPID" "x"
+t "other folder: no warning, record kept"  "[ -z \"\$(ss '$T/elsewhere/b' new4 '$T/tr-new.jsonl')\" ] && [ -f '$OPEN/claude-dead2' ]"
+t "back in that folder: warning appears"   "grep -q Unfinished <<<\"\$(ss '$T/elsewhere/a' new5 '$T/tr-new.jsonl')\""
+rm -f "$OPEN"/*
+rec claude-dead3 "$T/elsewhere/a" "$T/tr-dead.jsonl" "$DEADPID" "x"
+t "resume: no warning, record consumed"    "[ -z \"\$(ss '$T/elsewhere/a' new6 '$T/tr-new.jsonl' resume)\" ] && [ ! -f '$OPEN/claude-dead3' ]"
+rec claude-dead4 "$T/elsewhere/a" "$T/tr-dead.jsonl" "$DEADPID" "x"
+perl -e 'my $o=time-8*86400; utime($o,$o,$ARGV[0])' "$OPEN/claude-dead4"
+t "record older than 7 days: dropped, no warning" "[ -z \"\$(ss '$T/elsewhere/a' new7 '$T/tr-new.jsonl')\" ] && [ ! -f '$OPEN/claude-dead4' ]"
+rm -f "$OPEN"/*
+rec claude-nopid "$T/elsewhere/a" "$T/tr-dead.jsonl" "" ""
+perl -e 'my $o=time-86400; utime($o,$o,$ARGV[0])' "$T/tr-dead.jsonl"
+t "no PID, transcript idle for a day: dead" "grep -q Unfinished <<<\"\$(ss '$T/elsewhere/a' new8 '$T/tr-new.jsonl')\""
+rec claude-nopid2 "$T/elsewhere/a" "$T/tr-dead.jsonl" "" ""; touch "$T/tr-dead.jsonl"
+t "no PID, transcript active just now: alive" "[ -z \"\$(ss '$T/elsewhere/a' new9 '$T/tr-new.jsonl')\" ] && [ -f '$OPEN/claude-nopid2' ]"
+rm -f "$OPEN"/*
+# end vs compact
+ss "$T/elsewhere/a" endtest "$T/none.jsonl" >/dev/null
+printf '{"cwd":"%s","session_id":"endtest","transcript_path":"%s"}' "$T/elsewhere/a" "$T/none.jsonl" | bash "$H/adapters/claude/hooks/session-end.sh" compact
+t "compact does not delete the record"     "[ -f '$OPEN/claude-endtest' ]"
+printf '{"cwd":"%s","session_id":"endtest","transcript_path":"%s"}' "$T/elsewhere/a" "$T/none.jsonl" | bash "$H/adapters/claude/hooks/session-end.sh" end
+t "real end deletes the record"            "[ ! -f '$OPEN/claude-endtest' ]"
+ss "$T/elsewhere/a" cmp1 "$T/none.jsonl" compact >/dev/null
+t "start with source=compact: nothing recorded" "[ ! -f '$OPEN/claude-cmp1' ]"
+# the tool's own PID is found through the parent processes
+mkdir -p "$T/fakebin"; cat >"$T/fakebin/claude" <<X
+#!/bin/bash
+echo \$\$ >"$T/fakepid"
+echo '{"cwd":"$T/elsewhere/a","session_id":"pidtest","transcript_path":"$T/none.jsonl"}' | bash "$H/adapters/claude/hooks/session-start.sh" >/dev/null
+ps -o comm= -p \$\$ >"$T/fakecomm"
+X
+chmod +x "$T/fakebin/claude"; "$T/fakebin/claude"
+if grep -q 'claude' "$T/fakecomm" 2>/dev/null; then
+  t "tool PID recorded via parent walk"    "[ \"\$(sed -n 4p '$OPEN/claude-pidtest')\" = \"\$(cat '$T/fakepid')\" ]"
+else echo "  - skipped: parent-process walk (this platform's ps shows the interpreter, not the script name)"; fi
+rm -f "$OPEN"/*
+# other tools: Codex and Gemini hooks show the warning too, cross-tool
+cp "$FX/codex.jsonl" "$T/tr-codex.jsonl"; cp "$FX/gemini.json" "$T/tr-gemini.json"
+rec codex-dc1 "$T/elsewhere/a" "$T/tr-codex.jsonl" "$DEADPID" "x"
+gout=$(printf '{"cwd":"%s","session_id":"g1","transcript_path":"","source":"startup"}' "$T/elsewhere/a" | bash "$H/adapters/gemini/hooks/session-start.sh")
+t "gemini hook: warning in valid JSON, codex session read" "jq -e '.hookSpecificOutput.additionalContext | test(\"Unfinished session\") and test(\"Stripe|checkout|stripe\") and test(\"session-digest.sh. codex\")' <<<\"\$gout\""
+rec claude-dc2 "$T/elsewhere/a" "$T/tr-dead.jsonl" "$DEADPID" "x"
+cout=$(printf '{"cwd":"%s","session_id":"c1","transcript_path":"","source":"startup"}' "$T/elsewhere/a" | bash "$H/adapters/codex/hooks/session-start.sh")
+t "codex hook: warning, under the size cap" "jq -e '.hookSpecificOutput.additionalContext | test(\"Unfinished session\") and length < 9001' <<<\"\$cout\""
+rec codex-dc3 "$T/elsewhere/a" "$T/tr-codex.jsonl" "$DEADPID" "x"
+t "codex warning keeps the codex footnote"  "printf '{\"cwd\":\"%s\",\"session_id\":\"c2\",\"transcript_path\":\"\",\"source\":\"startup\"}' '$T/elsewhere/a' | bash '$H/adapters/codex/hooks/session-start.sh' | jq -e '.hookSpecificOutput.additionalContext | test(\"codex resume\")'"
+# digest
+t "digest: normalized, short"               "d=\$(bash '$H/core/session-digest.sh' claude '$FX/claude.jsonl' 50); grep -q '^USER: ' <<<\"\$d\" && [ \${#d} -le 4100 ]"
+printf '{"type":"user","message":{"content":"my key is sk-abcdefghijklmnopqrstuvwxyz123456 ok"},"timestamp":"2026-01-01T00:00:00Z"}\n' >"$T/tr-secret.jsonl"
+t "digest scrubs secrets"                   "d=\$(bash '$H/core/session-digest.sh' claude '$T/tr-secret.jsonl'); grep -q SECRET <<<\"\$d\" && ! grep -q abcdefghijklmnop <<<\"\$d\""
+t "no Python anywhere in the package"       "! grep -rIlE 'python3? |\.py\b' '$ROOT/core' '$ROOT/adapters' '$ROOT/lib' '$ROOT/install.sh' '$ROOT/doctor.sh'"
+# startup time with open-session bookkeeping
+rec claude-x1 "$T/elsewhere/b" "$T/tr-dead.jsonl" "$LIVEPID" "$LIVEST"
+t0=$(hr); ss "$T/elsewhere/b" timing "$T/none.jsonl" >/dev/null; t1=$(hr)
+t "session start with bookkeeping is fast"  "perl -e 'exit(($t1 - $t0) < 1.0 ? 0 : 1)'"
+kill $LIVEPID 2>/dev/null; rm -rf "$OPEN"
+sed -i.bak 's|^RECOVER=.*|RECOVER="on"|' "$H/mindpalace.conf"
+
 echo "rules-only tools (zed, qwen)"
 mkdir -p "$T/.qwen"; echo "# my qwen notes" > "$T/.qwen/QWEN.md"
 bash "$ROOT/install.sh" --yes --agents claude,codex,gemini,zed,qwen >/dev/null 2>&1

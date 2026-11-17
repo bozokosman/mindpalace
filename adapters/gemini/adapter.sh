@@ -33,3 +33,5 @@ mp_agent_llm() {
 
 # Maintainer: UNSUPPORTED (no mp_agent_edit). Gemini's non-interactive approval modes cannot restrict edits to
 # the vault or exclude the private folder, so the maintainer stays off when Gemini is the only tool.
+
+mp_agent_proc_regex() { echo '^(gemini|node)$'; }
