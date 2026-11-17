@@ -1,2 +1,26 @@
+# OS and editor noise
 .DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+# Backups made by the installer or by hand
+*.bak
 *.bak-*
+*.removed-*
+# Local state, secrets, build output
+state/
+.env
+.env.*
+*.pem
+*.key
+dist/
+*.zip
+*.sha256
+# Local vaults used while testing
+/vault/
+/brain/
+private/
+!vault-template/private/
+*.token

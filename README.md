@@ -202,4 +202,4 @@ Everything lives in `~/.mindpalace/mindpalace.conf`:
 
 ---
 
-MindPalace v1.1.0 · © 2026 Osman. All rights reserved.
+MindPalace v1.1.0 · MIT License · Copyright (c) 2026 Osman Bozok.
