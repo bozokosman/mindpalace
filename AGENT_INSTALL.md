@@ -128,6 +128,7 @@ Tell the user briefly: what was installed (version, folders, backups the install
 | No memory at session start | The folder must be inside a vault or a projects folder; elsewhere nothing loads on purpose. Run doctor. Codex: approve hooks with `/hooks`. |
 | No journal entry after a session | Read `~/.mindpalace/state/hook.log`. Sessions shorter than `MIN_CONV_CHARS` are skipped. |
 | `ERROR: empty summary` | The summary tool's CLI failed or is not on the hooks' PATH. Set `SUMMARY_AGENT` in `~/.mindpalace/mindpalace.conf`. Background calls without an interactive login need `CLAUDE_OAUTH_TOKEN_FILE`. |
+| Slow session start, or "memory may be out of date" | The start waits up to `SESSION_WAIT_SEC` (default 40) for the previous session's summary or maintainer. Wait for them to finish, or lower it in `mindpalace.conf`. If the hook is killed after 10 s, re-run the installer (hook timeout is now 60 s). |
 | "maintainer: unsupported" | Only Claude Code can run it safely today. Everything else works without it. |
 | Risky command blocked in Codex/Gemini | Expected: those hooks cannot ask. Explain the command to the user. |
 | Windows: hooks do nothing | Install Git for Windows, make sure `bash` is on PATH, rerun `install.ps1`. |

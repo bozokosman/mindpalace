@@ -43,7 +43,7 @@ STATE="${MP_STATE:-$HOME/.mindpalace/state}"
 RETRY_WAIT="20 60"            # seconds to wait before each retry (two retries). Empty = no retries
 EMPTY_RETRY_MIN_CHARS=8000    # a long conversation that gets an empty answer is tried once more
 RECOVER="on"                  # at session start, recover unsummarized sessions and pending maintenance in the background
-SESSION_WAIT_SEC=40            # session start waits at most this long for the previous session's summary and maintainer, then warns that memory may be stale
+SESSION_WAIT_SEC=40          # session start waits at most this long for the previous session's summary and maintainer, then warns that memory may be stale
 OPEN_STALE_SEC=7200           # open-session record without a verifiable PID counts as dead after this idle time
 
 # Maintainer: after each session summary an AI agent sorts inbox notes into the vault, updates SUMMARY.md and

@@ -138,6 +138,7 @@ Off switch: `MAINTAIN="off"` in `~/.mindpalace/mindpalace.conf` or `--no-maintai
 - Failed model calls are retried twice for temporary errors (overload, network); login or setup errors are never retried. A long conversation that comes back empty is tried once more.
 - Locks carry the process id and start time, so a crashed run never blocks the next one and a reused process id is not mistaken for a live one.
 - At session start, unsummarized sessions and pending maintenance are recovered in the background, without slowing the start.
+- Session start waits (up to `SESSION_WAIT_SEC`, default 40 s) for the previous session's summary and maintainer to finish, so it never reads half-written memory; on timeout it warns that memory may be out of date. Re-run the installer on existing setups to get the 60 s hook timeout this needs.
 - For unattended runs on Claude Code, set `CLAUDE_OAUTH_TOKEN_FILE` to a file with a long-lived token (`claude setup-token`); keep it at mode 600. The value is never logged.
 
 ## Configuration
@@ -151,6 +152,7 @@ Everything lives in `~/.mindpalace/mindpalace.conf` (see `mindpalace.conf.exampl
 | `MAINTAIN`, `MAINTAIN_AGENT`, `AUTO_COMMIT` | on, claude, on | Maintainer and local commits |
 | `RETRY_WAIT`, `EMPTY_RETRY_MIN_CHARS` | `20 60`, 8000 | Retry waits (seconds); empty-answer retry threshold |
 | `RECOVER` | on | Background recovery at session start |
+| `SESSION_WAIT_SEC` | 40 | Max wait at session start for the previous session's summary and maintainer; warns if memory may be out of date |
 | `LESSON_TRIAL_DAYS`, `LESSON_RETIRE_DAYS`, `LESSON_MAX_RULES` | 30, 90, 15 | Lessons cycle |
 | `CLAUDE_OAUTH_TOKEN_FILE` | empty | Long-lived Claude token file |
 | `BUDGET_BRAIN`, `BUDGET_PROJECT`, `MIN_CONV_CHARS` | 8000, 3000, 400 | Context budgets, shortest session worth summarizing |
