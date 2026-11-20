@@ -411,7 +411,7 @@ t "no Python anywhere in the package"       "! grep -rIlE 'python3? |\.py\b' '$R
 # startup time with open-session bookkeeping
 rec claude-x1 "$T/elsewhere/b" "$T/tr-dead.jsonl" "$LIVEPID" "$LIVEST"
 t0=$(hr); ss "$T/elsewhere/b" timing "$T/none.jsonl" >/dev/null; t1=$(hr)
-t "session start with bookkeeping is fast"  "perl -e 'exit(($t1 - $t0) < 1.0 ? 0 : 1)'"
+t "session start with bookkeeping is fast"  "perl -e 'exit(($t1 - $t0) < $FAST_MAX ? 0 : 1)'"
 kill $LIVEPID 2>/dev/null; rm -rf "$OPEN"
 sed -i.bak 's|^RECOVER=.*|RECOVER="on"|' "$H/mindpalace.conf"
 
