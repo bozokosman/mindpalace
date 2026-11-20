@@ -1,5 +1,8 @@
 # Changelog
 
+## Unreleased
+- **Session start race:** the SessionStart hooks (Claude, Codex, Gemini) now wait up to `SESSION_WAIT_SEC` (default 40) for the previous session's summary and maintainer (live PID locks, stale ones ignored, own session excluded) before reading memory, and print a one-line "memory may be out of date" warning on timeout; SessionStart hook timeouts raised to 60 s (re-run the installer to update); summary/maintainer jobs take their lock before the end hook returns
+
 ## 1.2.0 — 2026-11-17
 Resilience, an optional maintainer, cut-off session detection, and a public GitHub release flow.
 - **Retries:** model calls retry twice on temporary errors (waits in `RETRY_WAIT`), never on login/auth/missing-CLI errors; a long conversation answered with EMPTY is tried once more (`EMPTY_RETRY_MIN_CHARS`)

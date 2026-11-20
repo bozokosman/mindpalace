@@ -28,7 +28,7 @@ adapter_install() {
     def put($ev; $entry): .hooks[$ev] = (((.hooks[$ev] // []) | map(select(ours | not))) + [$entry]);
     .hooks = (.hooks // {})
     | put("PreToolUse";  {matcher:"^Bash$", hooks:[{type:"command", command:$g, timeout:5, statusMessage:"MindPalace guard"}]})
-    | put("SessionStart";{hooks:[{type:"command", command:$s, timeout:10, statusMessage:"Loading MindPalace memory"}]})
+    | put("SessionStart";{hooks:[{type:"command", command:$s, timeout:60, statusMessage:"Loading MindPalace memory"}]})
     | put("SessionEnd";  {hooks:[{type:"command", command:$e, timeout:3}]})
     | put("PreCompact";  {hooks:[{type:"command", command:$c, timeout:10}]})
   ' "$A_CODEX_HOOKS" > "$tmp" && mv "$tmp" "$A_CODEX_HOOKS"

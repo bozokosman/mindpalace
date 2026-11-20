@@ -28,7 +28,7 @@ adapter_install() {
     def put($ev; $entry): .hooks[$ev] = (((.hooks[$ev] // []) | map(select(ours | not))) + [$entry]);
     .hooks = (.hooks // {})
     | put("BeforeTool";  {matcher:"run_shell_command|shell", hooks:[{type:"command", name:"mindpalace-guard", command:$g, timeout:5000}]})
-    | put("SessionStart";{hooks:[{type:"command", name:"mindpalace-memory", command:$s, timeout:10000}]})
+    | put("SessionStart";{hooks:[{type:"command", name:"mindpalace-memory", command:$s, timeout:60000}]})
     | put("SessionEnd";  {hooks:[{type:"command", name:"mindpalace-summary", command:$e, timeout:10000}]})
     | put("PreCompress"; {hooks:[{type:"command", name:"mindpalace-summary", command:$c, timeout:10000}]})
   ' "$A_GEMINI_SETTINGS" > "$tmp" && mv "$tmp" "$A_GEMINI_SETTINGS"

@@ -77,9 +77,14 @@ mp_open_start() {
 # mp_open_end <agent> <session id>: call on a real session end only (never on compaction).
 mp_open_end() { mp_safe_id "$2" && rm -f "$(mp_open_dir)/$1-$2"; return 0; }
 
-# Fills MP_CTX_MEM (memory), MP_CTX_WARN (unfinished session) and MP_CTX_HEALTH (one line, only when something else is printed).
+# Waits for the previous session's end work first. Fills MP_CTX_STALE (one-line warning on timeout), MP_CTX_MEM (memory), MP_CTX_WARN (unfinished session) and MP_CTX_HEALTH (one line, only when something else is printed).
 mp_session_context() {  # <agent> <cwd> <session id> <transcript> <source>
   mp_resolve "$2"
+  MP_CTX_STALE=""
+  # The previous session's summary/maintainer may still be writing memory: wait for it before reading (and before recovery starts more).
+  if [ -z "$MINDPALACE_DOCTOR" ] && ! mp_wait_end_work "$1" "$3"; then
+    MP_CTX_STALE="MindPalace: the previous session's maintenance is still running, so memory may be out of date. Re-read memory/last-session.md and memory/open-items.md later."
+  fi
   mp_recover_start "$1" "$3"
   MP_CTX_MEM=$(mp_memory "$2")
   MP_CTX_WARN=$(mp_open_start "$1" "$2" "$3" "$4" "$5")
@@ -87,7 +92,10 @@ mp_session_context() {  # <agent> <cwd> <session id> <transcript> <source>
   if [ -n "$MP_CTX_MEM$MP_CTX_WARN" ]; then MP_CTX_HEALTH=$(mp_health_line); fi
 }
 mp_session_text() {  # all parts joined by blank lines
-  local out="$MP_CTX_MEM" p
+  local out="$MP_CTX_STALE" p
+  [ -n "$MP_CTX_MEM" ] && out="${out:+$out
+
+}$MP_CTX_MEM"
   for p in "$MP_CTX_WARN" "$MP_CTX_HEALTH"; do [ -n "$p" ] && out="${out:+$out
 }
 $p"; done

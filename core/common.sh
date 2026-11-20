@@ -39,6 +39,7 @@ source "$MP_HOME/mindpalace.conf" || exit 0
 : "${LESSON_TRIAL_DAYS:=30}"             # trial rule without a repeat for this long becomes a rule
 : "${LESSON_RETIRE_DAYS:=90}"            # rule without a repeat for this long is archived
 : "${LESSON_MAX_RULES:=15}"
+: "${SESSION_WAIT_SEC:=40}"               # session start waits at most this long for the previous session's summary/maintainer
 : "${OPEN_STALE_SEC:=7200}"              # open-session record without a verifiable PID counts as dead after this idle time
 : "${CLAUDE_OAUTH_TOKEN_FILE=}"
 : "${CLAUDE_MAINTAIN_MODEL:=haiku}"
@@ -126,6 +127,34 @@ mp_lock_acquire() {   # $1 lock file; 0 = got it, 1 = held by a live process
   done
   return 1
 }
+mp_lock_live() {   # $1 lock file: 0 = held by a live process (same rules as mp_lock_acquire)
+  local pid="" st="" age; IFS=' ' read -r pid st <"$1" 2>/dev/null
+  mp_pid_alive "$pid" "$st" || return 1
+  [ -n "$st" ] && return 0
+  age=$(( $(mp_now) - $(mp_mtime "$1") )); [ "$age" -le "${LOCK_MAX_AGE:-7200}" ]
+}
+# Session end work in progress: any live summary lock (<agent>-<session>.pid) or maintainer lock, except the
+# current session's own. Recovery locks are left out (they only start the others).
+mp_end_work_busy() {  # $1 own lock key (<agent>-<session id>, may be empty)
+  local f b
+  for f in "$STATE"/*.pid; do
+    [ -f "$f" ] || continue; b=$(basename "$f")
+    case "$b" in recover-*|"${1:-@}.pid") continue ;; esac
+    mp_lock_live "$f" && return 0
+  done
+  return 1
+}
+# Wait (at most SESSION_WAIT_SEC) until the previous session's summary and maintainer are done, so the memory
+# read next is current. Returns 1 on timeout. Nothing running = returns at once.
+mp_wait_end_work() {  # $1 agent, $2 current session id
+  local n=0 max="${SESSION_WAIT_SEC:-40}" key=""; [ -n "$2" ] && key="$1-$2"
+  case "$max" in ''|*[!0-9]*) max=40 ;; esac
+  while mp_end_work_busy "$key"; do
+    [ "$n" -ge "$max" ] && { mp_log "session start: previous session's maintenance still running after ${max}s"; return 1; }
+    n=$((n+1)); sleep 1
+  done
+  return 0
+}
 mp_lock_release() {   # only the owner removes it
   local pid=""; IFS=' ' read -r pid _ <"$1" 2>/dev/null
   [ "$pid" = "$$" ] && rm -f "$1"; return 0
@@ -193,7 +222,14 @@ mp_adapter() {
 # Start a background summary: mp_summarize_bg <agent> <cwd> <transcript> <session_id> <end|compact>
 # The summary goes to the vault that owns <cwd> (default vault otherwise).
 mp_summarize_bg() {
+  local sid="${4:-$(basename "$3" | sed 's/\.[^.]*$//')}"
   mp_detach bash "$MP_HOME/core/summarize.sh" "$1" "$2" "$3" "$4" "${5:-end}"
+  mp_await_lock "$STATE/$1-$sid.pid"
+}
+
+# Give a just-detached job up to ~1 s to take its lock, so a session start right after cannot miss it.
+mp_await_lock() {
+  local i; for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do [ -e "$1" ] && return 0; sleep 0.05; done; return 0
 }
 
 # Start the background maintainer for a vault (no-op when off or unsupported).
@@ -201,6 +237,7 @@ mp_maintain_bg() {  # $1 vault name, extra args passed on (e.g. --if-pending)
   [ "$MAINTAIN" = on ] && [ -n "$MAINTAIN_AGENT" ] || return 0
   local n="$1"; shift
   mp_detach bash "$MP_HOME/core/maintain.sh" "$n" "$@"
+  mp_await_lock "$STATE/maintain-$n.pid"
 }
 
 # Session-start recovery, fully in the background: unsummarized sessions (the safety net below)

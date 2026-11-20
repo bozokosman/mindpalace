@@ -29,7 +29,7 @@ adapter_install() {
     def put($ev; $entry): .hooks[$ev] = (((.hooks[$ev] // []) | map(select(ours | not))) + [$entry]);
     .hooks = (.hooks // {})
     | put("PreToolUse";  {matcher:"Bash", hooks:[{type:"command", command:$g, timeout:5}]})
-    | put("SessionStart";{hooks:[{type:"command", command:$s, timeout:10}]})
+    | put("SessionStart";{hooks:[{type:"command", command:$s, timeout:60}]})
     | put("SessionEnd";  {hooks:[{type:"command", command:$e, timeout:10}]})
     | put("PreCompact";  {hooks:[{type:"command", command:$c, timeout:10}]})
   ' "$A_SETTINGS" > "$tmp" && mv "$tmp" "$A_SETTINGS"

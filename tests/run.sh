@@ -296,6 +296,36 @@ t "more than the cap: unused longest is retired" "grep -q '^### b-second' '$LV/a
 sed -i.bak 's|^LESSON_MAX_RULES=.*|LESSON_MAX_RULES=15|' "$H/mindpalace.conf"
 t "dates work without GNU date"              "[ \"\$(MP_HOME='$H' bash -c 'source \"\$MP_HOME/core/common.sh\"; mp_days_between 2026-01-01 2026-03-01')\" = 59 ]"
 
+echo "session start waits for the previous session's end work"
+WS="$H/state"; mkdir -p "$WS"; rm -f "$WS"/*.pid
+sed -i.bak 's|^SESSION_WAIT_SEC=.*|SESSION_WAIT_SEC=3|' "$H/mindpalace.conf"; grep -q '^SESSION_WAIT_SEC=' "$H/mindpalace.conf" || echo 'SESSION_WAIT_SEC=3' >>"$H/mindpalace.conf"
+ssw() { printf '{"cwd":"%s","session_id":"%s","transcript_path":"","source":"startup"}' "$V" "${1:-waitcur}" | bash "$H/adapters/claude/hooks/session-start.sh"; }
+sleep 300 & WLIVE=$!; WLIVES=$(MP_HOME="$H" bash -c 'source "$MP_HOME/core/common.sh"; mp_proc_start '"$WLIVE")
+s0=$(date +%s); ssw >"$T/ws.out"; s1=$(date +%s)
+t "no lock: no wait, no warning"              "[ $((s1-s0)) -le 2 ] && ! grep -q 'still running' '$T/ws.out' && grep -q 'MindPalace memory' '$T/ws.out'"
+printf '%s %s\n' "$WLIVE" "$WLIVES" >"$WS/maintain-brain.pid"
+s0=$(date +%s); ssw >"$T/ws.out"; s1=$(date +%s)
+t "held lock: waits, then warns first line"   "[ $((s1-s0)) -ge 3 ] && [ $((s1-s0)) -le 8 ] && head -1 '$T/ws.out' | grep -q 'still running' && grep -q 'MindPalace memory' '$T/ws.out'"
+rm -f "$WS/maintain-brain.pid"
+printf '%s %s\n' "$WLIVE" "$WLIVES" >"$WS/claude-prevsess.pid"
+s0=$(date +%s); ssw >"$T/ws.out"; s1=$(date +%s)
+t "held summary lock of another session waits" "[ $((s1-s0)) -ge 3 ] && grep -q 'still running' '$T/ws.out'"
+rm -f "$WS/claude-prevsess.pid"
+printf '%s %s\n' "$WLIVE" "$WLIVES" >"$WS/claude-waitcur.pid"
+s0=$(date +%s); ssw >"$T/ws.out"; s1=$(date +%s)
+t "own session lock is not waited for"        "[ $((s1-s0)) -le 2 ] && ! grep -q 'still running' '$T/ws.out'"
+rm -f "$WS/claude-waitcur.pid"
+printf '999999 Mon Jan  1 00:00:00 2001\n' >"$WS/maintain-brain.pid"
+s0=$(date +%s); ssw >"$T/ws.out"; s1=$(date +%s)
+t "stale PID lock does not block"             "[ $((s1-s0)) -le 2 ] && ! grep -q 'still running' '$T/ws.out'"
+printf '%s %s\n' "$WLIVE" "$WLIVES" >"$WS/maintain-brain.pid"; ( sleep 1; rm -f "$WS/maintain-brain.pid" ) &
+s0=$(date +%s); ssw >"$T/ws.out"; s1=$(date +%s)
+t "lock released during the wait: no warning" "[ $((s1-s0)) -le 3 ] && ! grep -q 'still running' '$T/ws.out'"
+printf '%s %s\n' "$WLIVE" "$WLIVES" >"$WS/maintain-brain.pid"
+t "codex/gemini hooks wait and warn too"      "printf '{\"cwd\":\"%s\",\"session_id\":\"x\"}' '$V' | bash '$H/adapters/gemini/hooks/session-start.sh' | jq -e '.hookSpecificOutput.additionalContext | test(\"still running\")' && printf '{\"cwd\":\"%s\",\"session_id\":\"x\"}' '$V' | bash '$H/adapters/codex/hooks/session-start.sh' | jq -e '.hookSpecificOutput.additionalContext | test(\"still running\")'"
+kill $WLIVE 2>/dev/null; rm -f "$WS"/*.pid
+t "installers: SessionStart hook timeout >= 60 s"  "grep -q 'SessionStart\";{hooks:\[{type:\"command\", command:\$s, timeout:60' '$H/adapters/claude/install.sh' && grep -q 'timeout:60, statusMessage:\"Loading' '$H/adapters/codex/install.sh' && grep -q 'mindpalace-memory\", command:\$s, timeout:60000' '$H/adapters/gemini/install.sh'"
+
 echo "unfinished sessions (all folders)"
 sed -i.bak 's|^RECOVER=.*|RECOVER="off"|' "$H/mindpalace.conf"
 OPEN="$H/state/open"; rm -rf "$OPEN"; mkdir -p "$T/elsewhere/a" "$T/elsewhere/b"

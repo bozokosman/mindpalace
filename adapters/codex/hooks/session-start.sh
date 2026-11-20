@@ -11,7 +11,8 @@ cwd=$(mp_path "$(jq -r '.cwd // empty' <<<"$input")"); [ -z "$cwd" ] && cwd="$PW
 tr=$(mp_path "$(jq -r '.transcript_path // empty' <<<"$input")")
 mp_session_context codex "$cwd" "$(jq -r '.session_id // empty' <<<"$input")" "$tr" "$(jq -r '.source // empty' <<<"$input")"
 [ -z "$MP_CTX_MEM$MP_CTX_WARN" ] && exit 0
-extra="$MP_CTX_WARN"; [ -n "$MP_CTX_HEALTH" ] && extra="${extra:+$extra
+extra="$MP_CTX_STALE"; [ -n "$MP_CTX_WARN" ] && extra="${extra:+$extra
+}$MP_CTX_WARN"; [ -n "$MP_CTX_HEALTH" ] && extra="${extra:+$extra
 }$MP_CTX_HEALTH"
 room=$((9000 - ${#extra} - 2)); [ "$room" -lt 0 ] && room=0
 base=""; [ -n "$MP_CTX_MEM" ] && base=$( { mp_body "$VAULT/RULES.md"; echo; printf '%s\n' "$MP_CTX_MEM"; } | head -c "$room")
