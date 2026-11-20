@@ -2,6 +2,7 @@
 
 ## Unreleased
 - **Session start race:** the SessionStart hooks (Claude, Codex, Gemini) now wait up to `SESSION_WAIT_SEC` (default 40) for the previous session's summary and maintainer (live PID locks, stale ones ignored, own session excluded) before reading memory, and print a one-line "memory may be out of date" warning on timeout; SessionStart hook timeouts raised to 60 s (re-run the installer to update); summary/maintainer jobs take their lock before the end hook returns
+- **Tests on Windows:** the token-file doctor check expects the "permission bits not checked" message there, and the session-start speed limit is 5 s instead of 1 s (slow process spawn in Git Bash)
 
 ## 1.2.0 — 2026-11-17
 Resilience, an optional maintainer, cut-off session detection, and a public GitHub release flow.

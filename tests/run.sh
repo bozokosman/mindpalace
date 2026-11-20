@@ -174,10 +174,11 @@ cp "$FX/claude.jsonl" "$T/.claude/projects/p1/lost1.jsonl"
 perl -e 'my $o=time-3600; utime($o,$o,$ARGV[0])' "$T/.claude/projects/p1/lost1.jsonl"
 perl -e 'my $o=time-86400; utime($o,$o,$ARGV[0])' "$H/state/.installed"
 sed -i.bak "s|^SUMMARY_AGENT=.*|SUMMARY_AGENT=\"claude\"|" "$H/mindpalace.conf"
+FAST_MAX=1.0; case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) FAST_MAX=5.0 ;; esac   # process spawn is slow on Windows
 t0=$(hr)
 rec_out=$(echo "{\"cwd\":\"$V\",\"session_id\":\"cur\"}" | bash "$H/adapters/claude/hooks/session-start.sh")
 t1=$(hr)
-t "session start returns fast with recovery on" "perl -e 'exit(($t1 - $t0) < 1.0 ? 0 : 1)'"
+t "session start returns fast with recovery on" "perl -e 'exit(($t1 - $t0) < $FAST_MAX ? 0 : 1)'"
 t "recovery adds at most 1 line to stdout"      "[ \$(printf '%s\n' \"\$rec_out\" | grep -c '^MindPalace health') -le 1 ]"
 for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do grep -qF '[x]' "$V/journal/$(date +%F).md" 2>/dev/null && break; sleep 0.5; done
 t "unsummarized session recovered in background" "grep -q '\[x\] Stripe checkout' '$V/journal/'\$(date +%F).md"
@@ -431,9 +432,12 @@ TOKEN_SEEN="$T/token-seen" MP_HOME="$H" bash "$H/core/summarize.sh" claude "$T/c
 t "token file: all whitespace removed"       "[ \"\$(cat '$T/token-seen')\" = 'sk-ant-oat01-AbCdEfGhIjKl123' ]"
 t "token value never reaches the log"        "[ -s '$H/state/hook.log' ] && ! grep -q 'AbCdEf' '$H/state/hook.log' && ! grep -q 'GhIjKl123' '$H/state/hook.log'"
 t "log still shows the failure (redacted)"   "grep -q 'token was .TOKEN.' '$H/state/hook.log'"
-t "doctor: mode 600 accepted"                "bash '$H/doctor.sh' | grep -q 'token file has mode 600'"
-if [ "$(uname -s | cut -c1-5)" = MINGW ]; then echo "  - skipped: token file mode check (no permission bits on Windows)"
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) WINTOK=1 ;; *) WINTOK=0 ;; esac
+if [ "$WINTOK" = 1 ]; then
+  t "doctor: token file accepted (Windows)"    "bash '$H/doctor.sh' | grep -q 'token file present'"
+  echo "  - skipped: token file mode check (no permission bits on Windows)"
 else
+  t "doctor: mode 600 accepted"                "bash '$H/doctor.sh' | grep -q 'token file has mode 600'"
   chmod 644 "$T/tok"
   t "doctor: mode 644 rejected"              "out=\$(bash '$H/doctor.sh'); ! bash '$H/doctor.sh' >/dev/null && grep -q 'mode 644, must be 600' <<<\"\$out\""
   t "doctor never prints the token"          "! bash '$H/doctor.sh' | grep -q 'AbCdEf'"
